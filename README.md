@@ -1,4 +1,4 @@
-# Othello by Super Cow Poers
+# Networked Othello
 
 This is a simple Othello/Reversi game implemented using Go and sockets.
 
