@@ -29,7 +29,7 @@ Exclusions:
 * Documentation of the game message protocol
 * A simple server program which can relay messages between clients
 * An implementation of Othello rules
-* A client script
+* A client script that uses a CLI
 * A presentation outlining the project and its progress
 
 ## Timeline
@@ -37,12 +37,14 @@ Exclusions:
 Key milestones:
 * Server complete
 * Client can connect to server
-* Client is fully functional and can synchronize with another client
+* Client can synchronize with another client
+* Client is fully functional with a terminal user interface
 
 Task breakdown:
 * Protocol design (8 hours)
 * Server programming (8 hours)
 * Basic client programming (4 hours)
+* TUI programming (2 hours)
 * Client-server tests (4 hours)
 * Game rules implementation (12 hours)
 * Game tests (4 hours)
