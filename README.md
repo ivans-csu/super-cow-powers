@@ -1,6 +1,6 @@
 # Networked Othello
 
-This is a simple Othello/Reversi game implemented using Go and sockets.
+This is a simple Othello/Reversi game implemented using Python and sockets.
 
 **How to play:**
 1. **Start the server:** Run the `server.go` script.
@@ -8,8 +8,8 @@ This is a simple Othello/Reversi game implemented using Go and sockets.
 3. **Play the game:** Players take turns entering their moves. The first player to get three in a row wins!
 
 **Technologies used:**
-* Golang
+* Python
 * Sockets
 
 **Additional resources:**
-* [Go Documentation](https://go.dev/doc/)
+* [Python Documentation](https://docs.python.org/3/)

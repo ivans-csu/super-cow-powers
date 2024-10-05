@@ -10,7 +10,7 @@ Super Cow Powers (Ben Perry & Ivan Stanton)
 
 ## Objective
 
-To implement a networked Othello/Reversi game in Go with a command line interface.
+To implement a networked Othello/Reversi game in Python with a command line interface.
 
 ## Scope
 
