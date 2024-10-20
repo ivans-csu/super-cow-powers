@@ -138,6 +138,8 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
   - identify the user to the server
   - establish a session
 
+  - HELLO message format shall never change in subsequent protocol revisions
+
 #### request
   - advertises their maximum supported protocol version
   - specifies their user id
