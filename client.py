@@ -1,3 +1,4 @@
+import atexit
 import selectors
 import socket
 import struct
@@ -54,20 +55,16 @@ class Client:
 
         self.send_action(HelloAction(self.max_protocol, 0x0486))
 
-        try:
-            while True:
-                events = self.sel.select()
-                for key, mask in events:
-                    if mask & selectors.EVENT_READ:
-                        self.handle()
-                    if mask & selectors.EVENT_WRITE:
-                        if self.writebuffer:
-                            sent = self.sock.send(self.writebuffer)
-                            self.writebuffer = self.writebuffer[sent:]
-                # interactive client code gets called here
-        except KeyboardInterrupt:
-            sys.stderr.write(f'released {self.sock.getsockname()}\n')
-            self.sock.close()
+        while True:
+            events = self.sel.select()
+            for key, mask in events:
+                if mask & selectors.EVENT_READ:
+                    self.handle()
+                if mask & selectors.EVENT_WRITE:
+                    if self.writebuffer:
+                        sent = self.sock.send(self.writebuffer)
+                        self.writebuffer = self.writebuffer[sent:]
+            # interactive client code gets called here
 
     def handle(self):
         try:
@@ -103,14 +100,25 @@ class Client:
         self.actions.put(action)
         self.writebuffer += action.message()
 
+    def stop(self):
+        sys.stderr.write(f'released {self.sock.getsockname()}\n')
+        self.sock.close()
+
 if __name__ == '__main__':
     client = Client()
 
-    argc = len(sys.argv)
-    if argc == 1:
-        client.start()
-    elif argc == 3:
-        client.start(sys.argv[1], int(sys.argv[2]))
-    else:
-        print('usage: client.py <server address> <server port>', file=sys.stderr)
-        exit(1)
+    atexit.register(client.stop)
+
+    try:
+        argc = len(sys.argv)
+        if argc == 1:
+            client.start()
+        elif argc == 3:
+            client.start(sys.argv[1], int(sys.argv[2]))
+        else:
+            print('usage: client.py <server address> <server port>', file=sys.stderr)
+            exit(1)
+
+    except KeyboardInterrupt:
+        sys.stderr.write('killed by KeyboardInterrupt\n')
+        exit(0)

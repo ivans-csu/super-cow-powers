@@ -1,6 +1,7 @@
-import struct
+import atexit
 import selectors
 import socket
+import struct
 import sys
 from collections import namedtuple
 
@@ -22,12 +23,12 @@ class Game:
         print('game started', self, file=sys.stderr)
         # TODO
 
-class Session():
+class Session:
     def __init__(self, sock):
+        self.game: int
+        self.user_id: int
+        self.protocol = 0 # init protocol always 0 for HELLO
         self.sock = sock
-        self.protocol = 0
-        self.user_id = None
-        self.game = None
         self.write_buf = bytes()
 
     def send(self, message: bytes):
@@ -40,16 +41,26 @@ class Session():
         except BlockingIOError:
             return
 
-# Handler interface:
-# len(protocol_version) yields the number of bytes to be consumed to decode this message type for the specified protocol version
-# handle(server, session, message) decode the message according to the protocol version of the session, perform the action, return a response
+class Server: ... # python sucks
 
-class HelloHandler:
+# Handler interface
+class Handler:
+    # returns the number of bytes to be consumed to decode this message type for the specified protocol version
     @staticmethod
-    def len(protocol: int) -> int: return 6
+    def len(protocol_version: int) -> int: ...
+
+    # decode the message according to the protocol version of the session
+    # perform the action on the server; may mutate internal state
+    # return a response
+    @staticmethod
+    def handle(server: Server, session: Session, message: bytes) -> bytes: ...
+
+class HelloHandler(Handler):
+    @staticmethod
+    def len(protocol) -> int: return 6
 
     @staticmethod
-    def handle(server, session: Session, message: bytes) -> bytes:
+    def handle(server, session, message) -> bytes:
         max_version, user_id = struct.unpack('!HI', message)
 
         if max_version < server.min_version:
@@ -77,37 +88,42 @@ class Server:
 
     def __init__(self):
         self.games = list()
+        self.main_sock: socket.socket
         self.matchmaking_queue = list()
-        self.sessions = dict() # map player socket fds to user_ids and games
-        self.main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sel = selectors.DefaultSelector()
+        self.sessions = dict() # map player socket fds to user_ids and games
+
+    def new_session(self, conn):
+        session = Session(conn)
+        self.sessions[conn.fileno()] = session
+        return session
 
     # main loop for listening as a TCP server.  blocks.
     def start(self, address = '', port = 9999):
+        self.main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.main_sock.bind((address, port))
         self.main_sock.setblocking(False)
         self.main_sock.listen()
         self.sel.register(self.main_sock, selectors.EVENT_READ, self.cb_connect)
         print(f'listening on {self.main_sock.getsockname()}', file=sys.stderr)
 
-        try:
-            while True:
-                events = self.sel.select()
-                for key, mask in events:
-                    callback = key.data
-                    if key.fd in self.sessions:
-                        session = self.sessions[key.fd]
-                    else:
-                        session = Session(key.fileobj)
-                        self.sessions[key.fd] = session
-                    if mask & selectors.EVENT_READ:
-                        callback(session)
-                    if mask & selectors.EVENT_WRITE:
-                        if session.write_buf:
-                            session.flush()
-        except KeyboardInterrupt:
-            sys.stderr.write(f'released {self.main_sock.getsockname()}\n')
-            self.main_sock.close()
+        while True:
+            events = self.sel.select()
+            for key, mask in events:
+                callback = key.data
+                if key.fd in self.sessions:
+                    session = self.sessions[key.fd]
+                else:
+                    session = self.new_session(key.fileobj)
+                if mask & selectors.EVENT_READ:
+                    callback(session)
+                if mask & selectors.EVENT_WRITE:
+                    if session.write_buf:
+                        session.flush()
+
+    def stop(self):
+        sys.stderr.write(f'released {self.main_sock.getsockname()}\n')
+        self.main_sock.close()
 
     # accept a new TCP connection
     def cb_connect(self, session: Session):
@@ -172,11 +188,18 @@ class Server:
 if __name__ == '__main__':
     server = Server()
 
-    argc = len(sys.argv)
-    if argc == 1:
-        server.start()
-    elif argc == 3:
-        server.start(sys.argv[1], int(sys.argv[2]))
-    else:
-        print('usage: server.py <listen address> <listen port>', file=sys.stderr)
-        exit(1)
+    atexit.register(server.stop)
+
+    try:
+        argc = len(sys.argv)
+        if argc == 1:
+            server.start()
+        elif argc == 3:
+            server.start(sys.argv[1], int(sys.argv[2]))
+        else:
+            print('usage: server.py <listen address> <listen port>', file=sys.stderr)
+            exit(1)
+
+    except KeyboardInterrupt:
+        sys.stderr.write('killed by KeyboardInterrupt\n')
+        exit(0)
