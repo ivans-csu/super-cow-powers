@@ -1,6 +1,7 @@
-import struct
+import atexit
 import selectors
 import socket
+import struct
 import sys
 from collections import namedtuple
 
@@ -90,24 +91,24 @@ class Server:
         self.sel.register(self.main_sock, selectors.EVENT_READ, self.cb_connect)
         print(f'listening on {self.main_sock.getsockname()}', file=sys.stderr)
 
-        try:
-            while True:
-                events = self.sel.select()
-                for key, mask in events:
-                    callback = key.data
-                    if key.fd in self.sessions:
-                        session = self.sessions[key.fd]
-                    else:
-                        session = Session(key.fileobj)
-                        self.sessions[key.fd] = session
-                    if mask & selectors.EVENT_READ:
-                        callback(session)
-                    if mask & selectors.EVENT_WRITE:
-                        if session.write_buf:
-                            session.flush()
-        except KeyboardInterrupt:
-            sys.stderr.write(f'released {self.main_sock.getsockname()}\n')
-            self.main_sock.close()
+        while True:
+            events = self.sel.select()
+            for key, mask in events:
+                callback = key.data
+                if key.fd in self.sessions:
+                    session = self.sessions[key.fd]
+                else:
+                    session = Session(key.fileobj)
+                    self.sessions[key.fd] = session
+                if mask & selectors.EVENT_READ:
+                    callback(session)
+                if mask & selectors.EVENT_WRITE:
+                    if session.write_buf:
+                        session.flush()
+
+    def stop(self):
+        sys.stderr.write(f'released {self.main_sock.getsockname()}\n')
+        self.main_sock.close()
 
     # accept a new TCP connection
     def cb_connect(self, session: Session):
@@ -172,11 +173,18 @@ class Server:
 if __name__ == '__main__':
     server = Server()
 
-    argc = len(sys.argv)
-    if argc == 1:
-        server.start()
-    elif argc == 3:
-        server.start(sys.argv[1], int(sys.argv[2]))
-    else:
-        print('usage: server.py <listen address> <listen port>', file=sys.stderr)
-        exit(1)
+    atexit.register(server.stop)
+
+    try:
+        argc = len(sys.argv)
+        if argc == 1:
+            server.start()
+        elif argc == 3:
+            server.start(sys.argv[1], int(sys.argv[2]))
+        else:
+            print('usage: server.py <listen address> <listen port>', file=sys.stderr)
+            exit(1)
+
+    except KeyboardInterrupt:
+        sys.stderr.write('killed by KeyboardInterrupt\n')
+        exit(0)
