@@ -25,10 +25,10 @@ class Game:
 
 class Session:
     def __init__(self, sock):
+        self.game: int
+        self.user_id: int
+        self.protocol = 0 # init protocol always 0 for HELLO
         self.sock = sock
-        self.protocol = 0
-        self.user_id = None
-        self.game = None
         self.write_buf = bytes()
 
     def send(self, message: bytes):
@@ -88,13 +88,19 @@ class Server:
 
     def __init__(self):
         self.games = list()
+        self.main_sock: socket.socket
         self.matchmaking_queue = list()
-        self.sessions = dict() # map player socket fds to user_ids and games
-        self.main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sel = selectors.DefaultSelector()
+        self.sessions = dict() # map player socket fds to user_ids and games
+
+    def new_session(self, conn):
+        session = Session(conn)
+        self.sessions[conn.fileno()] = session
+        return session
 
     # main loop for listening as a TCP server.  blocks.
     def start(self, address = '', port = 9999):
+        self.main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.main_sock.bind((address, port))
         self.main_sock.setblocking(False)
         self.main_sock.listen()
@@ -108,8 +114,7 @@ class Server:
                 if key.fd in self.sessions:
                     session = self.sessions[key.fd]
                 else:
-                    session = Session(key.fileobj)
-                    self.sessions[key.fd] = session
+                    session = self.new_session(key.fileobj)
                 if mask & selectors.EVENT_READ:
                     callback(session)
                 if mask & selectors.EVENT_WRITE:
