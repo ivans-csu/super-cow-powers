@@ -23,7 +23,7 @@ class Game:
         print('game started', self, file=sys.stderr)
         # TODO
 
-class Session():
+class Session:
     def __init__(self, sock):
         self.sock = sock
         self.protocol = 0
@@ -41,16 +41,26 @@ class Session():
         except BlockingIOError:
             return
 
-# Handler interface:
-# len(protocol_version) yields the number of bytes to be consumed to decode this message type for the specified protocol version
-# handle(server, session, message) decode the message according to the protocol version of the session, perform the action, return a response
+class Server: ... # python sucks
 
-class HelloHandler:
+# Handler interface
+class Handler:
+    # returns the number of bytes to be consumed to decode this message type for the specified protocol version
     @staticmethod
-    def len(protocol: int) -> int: return 6
+    def len(protocol_version: int) -> int: ...
+
+    # decode the message according to the protocol version of the session
+    # perform the action on the server; may mutate internal state
+    # return a response
+    @staticmethod
+    def handle(server: Server, session: Session, message: bytes) -> bytes: ...
+
+class HelloHandler(Handler):
+    @staticmethod
+    def len(protocol) -> int: return 6
 
     @staticmethod
-    def handle(server, session: Session, message: bytes) -> bytes:
+    def handle(server, session, message) -> bytes:
         max_version, user_id = struct.unpack('!HI', message)
 
         if max_version < server.min_version:
