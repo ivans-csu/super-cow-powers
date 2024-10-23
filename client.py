@@ -6,11 +6,12 @@ import sys
 from shared import *
 from queue import Queue, Empty
 
-class ActionUnreadyException(Exception):
-    pass
 
 # interface
 class Action:
+    class Unready(Exception): pass
+    class BadStatus(Exception): pass
+
     # ctor is non-standardized, should contain protocol version and fields to init for a request message
 
     # provide a mapping into the ACTION enum
@@ -32,6 +33,8 @@ class Action:
 class HelloAction(Action):
     type = ACTION.HELLO
 
+    class Unsupported(Exception): ...
+
     def __init__(self, max_protocol: int, user_id: int):
         self.protocol = max_protocol
         self.user_id = user_id
@@ -42,14 +45,18 @@ class HelloAction(Action):
     def serialize(self):
         return struct.pack('!BHI', ACTION.HELLO, self.protocol, self.user_id)
 
-    def parse_response(self, STATUS: int, message: bytes):
-        self.protocol = struct.unpack('!H', message)[0]
-        assert self.protocol >= Client.min_protocol # TODO: handle this properly
+    def parse_response(self, status: STATUS, message: bytes):
+        if status == STATUS.OK:
+            self.protocol = struct.unpack('!H', message)[0]
+            if self.protocol < Client.min_protocol: raise self.Unsupported
+        elif status == STATUS.UNSUPPORTED:
+            self.protocol = struct.unpack('!H', message)[0]
+            raise self.Unsupported
+        else: raise Action.BadStatus(status)
         self.ready = True
 
     def finish(self, client):
-        if not self.ready:
-            raise ActionUnreadyException
+        if not self.ready: raise Action.Unready
         client.protocol_version = self.protocol
         client.user_id = self.user_id
         sys.stderr.write(f'new session established. user {self.user_id} protocol {self.protocol}\n')
@@ -117,8 +124,17 @@ class Client:
                 # TODO: handle OOB status code
 
             message = self.sock.recv(msg_len)
-            action_handler.parse_response(STATUS(status), message)
-            action_handler.finish(self)
+            try: action_handler.parse_response(STATUS(status), message)
+            except Action.BadStatus:
+                raise
+                # TODO: handle
+            except HelloAction.Unsupported:
+                raise
+                # TODO: handle
+            try: action_handler.finish(self)
+            except Action.Unready:
+                raise
+                # TODO: handle
         else: # push
             pass
 

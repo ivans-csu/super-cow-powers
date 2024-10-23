@@ -1,6 +1,7 @@
 import unittest
 
 import server
+import client
 from shared import *
 
 class MockConn:
@@ -103,5 +104,30 @@ class TestServerHello(unittest.TestCase):
         session.flush()
 
         self.assertEqual(mc.o, struct.pack('!BBH', STATUS.UNSUPPORTED, ACTION.HELLO, s.min_version))
+
+class TestClientHello(unittest.TestCase):
+    def test_ok(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.HelloAction(server.Server.max_version, 0x486))
+        c.flush()
+
+        sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)
+        c.handle()
+        self.assertEqual(c.protocol_version, server.Server.max_version)
+        self.assertEqual(c.user_id, 0x486)
+
+    def test_too_new(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        client.Client.min_protocol = server.Server.max_version + 1
+        c.send_action(client.HelloAction(c.min_protocol, 0x486))
+
+        sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)
+        try: c.handle()
+        except client.HelloAction.Unsupported: pass
+        else: self.fail()
 
 unittest.main()
