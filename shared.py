@@ -25,8 +25,17 @@ class ResponsePreamble:
         self.action = action
         self.status = status
 
+    def __eq__(self, other):
+        return self.action == other.action and self.status == other.status
+
+    def __repr__(self):
+        action = ACTION(self.action).name if self.action in iter(ACTION) else self.action
+        status = STATUS(self.status).name if self.status in iter(STATUS) else self.status
+        return f'ResponsePreamble(action={action}, status={status})'
+
     @staticmethod
     def unpack(msg: bytes):
+        msg = msg[:2]
         status, action = struct.unpack('BB', msg)
         return ResponsePreamble(action, status)
 
@@ -38,8 +47,16 @@ class PushPreamble:
         assert(type < 32768)
         self.type = type
 
+    def __eq__(self, other):
+        return self.type == other.type
+
+    def __repr__(self):
+        type = PUSH(self.push).name if self.push in iter(PUSH) else self.push
+        return f'PushPreamble(type={type})'
+
     @staticmethod
     def unpack(msg: bytes):
+        msg = msg[:2]
         return PushPreamble(struct.unpack('!H', msg)[0])
 
     def pack(self) -> bytes:
