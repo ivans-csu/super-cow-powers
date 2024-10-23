@@ -4,29 +4,50 @@ import socket
 import struct
 import sys
 from shared import *
-from queue import Queue
+from queue import Queue, Empty
 
 class ActionUnreadyException(Exception):
     pass
 
-class HelloAction:
+# interface
+class Action:
+    # ctor is non-standardized, should contain protocol version and fields to init for a request message
+
+    # provide a mapping into the ACTION enum
+    type: ACTION
+
+    # returns number of bytes to be consumed to decode a response message for the specified protocol version and status code
+    def len(self, status: STATUS) -> int: ...
+
+    # return the on-the-wire packed message for this Action request
+    def serialize(self) -> bytes: ...
+
+    # unpack the response message, update internal state
+    def parse_response(self, status: STATUS, message: bytes): ...
+
+    # once we've parsed the response, perform whatever internal client state manipulation is appropriate
+    # raises ActionUnreadyException if called before parse_response
+    def finish(self, client): ...
+
+class HelloAction(Action):
+    type = ACTION.HELLO
+
     def __init__(self, max_protocol: int, user_id: int):
         self.protocol = max_protocol
         self.user_id = user_id
         self.ready = False
 
-    @staticmethod
-    def len(protocol_version): return 2
+    def len(self, status): return 2
 
-    def message(self):
+    def serialize(self):
         return struct.pack('!BHI', ACTION.HELLO, self.protocol, self.user_id)
 
-    def parse_response(self, protocol: int, message: bytes):
+    def parse_response(self, STATUS: int, message: bytes):
         self.protocol = struct.unpack('!H', message)[0]
         assert self.protocol >= Client.min_protocol # TODO: handle this properly
         self.ready = True
 
-    def act(self, client):
+    def finish(self, client):
         if not self.ready:
             raise ActionUnreadyException
         client.protocol_version = self.protocol
@@ -38,15 +59,18 @@ class Client:
     max_protocol = 0
 
     def __init__(self):
+        self.protocol_version = -1
         self.sel = selectors.DefaultSelector()
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock: socket.socket
+        self.user_id = -1
+        self.waiting_actions: dict[ACTION, Queue[Action]] = {}
         self.writebuffer = bytes()
-        self.actions = Queue()
-        self.protocol_version = None
-        self.user_id = None
+        for action in ACTION:
+            self.waiting_actions[action] = Queue()
 
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         self.sock.connect((address, port))
         sys.stderr.write(f'connected to {self.sock.getpeername()}\n')
@@ -56,15 +80,15 @@ class Client:
         self.send_action(HelloAction(self.max_protocol, 0x0486))
 
         while True:
+
+            # interactive client code should be called from here
+
             events = self.sel.select()
-            for key, mask in events:
+            for _, mask in events:
                 if mask & selectors.EVENT_READ:
                     self.handle()
                 if mask & selectors.EVENT_WRITE:
-                    if self.writebuffer:
-                        sent = self.sock.send(self.writebuffer)
-                        self.writebuffer = self.writebuffer[sent:]
-            # interactive client code gets called here
+                    self.flush()
 
     def handle(self):
         try:
@@ -76,29 +100,36 @@ class Client:
             sys.stderr.write('server disconnected\n')
             exit(0)
 
-        if preamble[0] < 128:
+        if preamble[0] & 128 == 0: # action
             status = preamble[0]
             action = preamble[1]
-            try:
-                handler = self.actions.get()
-            except:
-                return
-                # TODO: handle this
+            try: action_handler = self.waiting_actions[ACTION(action)].get_nowait()
+            except ValueError:
+                raise
+                # TODO: handle OOB action number
+            except Empty:
+                raise
+                # TODO: handle response for nonexistent request
 
-            if status == STATUS.OK:
-                msg_len = handler.len(self.protocol_version)
-                message = self.sock.recv(msg_len)
-                handler.parse_response(self.protocol_version, message)
-                handler.act(self)
-        else:
+            try: msg_len = action_handler.len(STATUS(status))
+            except ValueError:
+                raise
+                # TODO: handle OOB status code
+
+            message = self.sock.recv(msg_len)
+            action_handler.parse_response(STATUS(status), message)
+            action_handler.finish(self)
+        else: # push
             pass
 
-    def parse(self, message: bytes):
-        pass
+    def send_action(self, action: Action):
+        self.waiting_actions[action.type].put(action)
+        self.writebuffer += action.serialize()
 
-    def send_action(self, action):
-        self.actions.put(action)
-        self.writebuffer += action.message()
+    def flush(self):
+        if self.writebuffer:
+            sent = self.sock.send(self.writebuffer)
+            self.writebuffer = self.writebuffer[sent:]
 
     def stop(self):
         sys.stderr.write(f'released {self.sock.getsockname()}\n')
@@ -116,7 +147,7 @@ if __name__ == '__main__':
         elif argc == 3:
             client.start(sys.argv[1], int(sys.argv[2]))
         else:
-            print('usage: client.py <server address> <server port>', file=sys.stderr)
+            sys.stderr.write('usage: client.py <server address> <server port>\n')
             exit(1)
 
     except KeyboardInterrupt:
