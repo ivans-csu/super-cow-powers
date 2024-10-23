@@ -64,7 +64,7 @@ class HelloHandler(Handler):
         max_version, user_id = struct.unpack('!HI', message)
 
         if max_version < server.min_version:
-            preamble = ResponsePreamble(ACTION.HELLO, STATUS.UNSUPPORTED).raw
+            preamble = ResponsePreamble(ACTION.HELLO, STATUS.UNSUPPORTED).pack()
             message = struct.pack('!H', server.min_version)
             return preamble + message
 
@@ -72,7 +72,7 @@ class HelloHandler(Handler):
         session.protocol = version
         session.user_id = user_id
 
-        preamble = ResponsePreamble(ACTION.HELLO).raw
+        preamble = ResponsePreamble(ACTION.HELLO).pack()
         message = struct.pack('!H', version)
 
         print(f'new session for user {session.user_id} protocol {session.protocol}', file=sys.stderr)
@@ -101,6 +101,7 @@ class Server:
     # main loop for listening as a TCP server.  blocks.
     def start(self, address = '', port = 9999):
         self.main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.main_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.main_sock.bind((address, port))
         self.main_sock.setblocking(False)
         self.main_sock.listen()
@@ -157,13 +158,13 @@ class Server:
         try: handler = Server.handlers[ACTION(action)]
         except:
             sys.stderr.write(f'UNSUPPORTED ACTION: {action}\n')
-            session.send(ResponsePreamble(action, STATUS.UNSUPPORTED).raw)
+            session.send(ResponsePreamble(action, STATUS.UNSUPPORTED).pack())
             return
 
         msg_len = handler.len(session.protocol)
         message = session.sock.recv(msg_len)
         if len(message) < msg_len:
-            session.send(ResponsePreamble(action, STATUS.BAD_FORMAT).raw)
+            session.send(ResponsePreamble(action, STATUS.BAD_FORMAT).pack())
             return
 
         response = handler.handle(self, session, message)

@@ -90,6 +90,8 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
   - the client sends request packets to the server to perform an **action**
   - The preamble specifies the action type; Action type determines the type of action message; the number of bytes to be read from the TCP stream, and how those data are formatted
   - most actions expect a response from the server via an **action status** message, which includes the success or failure status of the requested action, as well as containing any needed game state should the action succeed
+    - any number of state messages may be received following an action request before an action response is received
+    - Multiple action requests of the same type may be pending a response at a given time; The above rule applies, however, responses to these messages shall arrive in the order in which they were sent
 
 ### Server Packets
   - the server sends state packets to the client to indicate **status** of their request and/or current game **state**

@@ -22,15 +22,25 @@ class STATUS(IntEnum):
 class ResponsePreamble:
     def __init__(self, action: int, status: STATUS = STATUS.OK):
         assert(status < 128)
-        self.raw = bytes((status, action))
+        self.action = action
+        self.status = status
 
-    def status(self) -> STATUS: return STATUS(self.raw[0])
+    @staticmethod
+    def unpack(msg: bytes):
+        status, action = struct.unpack('BB', msg)
+        return ResponsePreamble(action, status)
 
-    def action(self) -> ACTION: return ACTION(self.raw[1])
+    def pack(self) -> bytes:
+        return bytes((self.status, self.action))
 
 class PushPreamble:
     def __init__(self, type: PUSH):
         assert(type < 32768)
-        self.raw = struct.pack('!H', type)
+        self.type = type
 
-    def type(self) -> PUSH: return PUSH(struct.unpack('!H', self.raw)[0])
+    @staticmethod
+    def unpack(msg: bytes):
+        return PushPreamble(struct.unpack('!H', msg)[0])
+
+    def pack(self) -> bytes:
+        return struct.pack('!H', self.type)
