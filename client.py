@@ -3,8 +3,8 @@ import selectors
 import socket
 import struct
 import sys
+from collections import deque
 from shared import *
-from queue import Queue, Empty
 
 
 # interface
@@ -70,10 +70,10 @@ class Client:
         self.sel = selectors.DefaultSelector()
         self.sock: socket.socket
         self.user_id = -1
-        self.waiting_actions: dict[ACTION, Queue[Action]] = {}
+        self.waiting_actions: dict[ACTION, deque[Action]] = {}
         self.writebuffer = bytes()
         for action in ACTION:
-            self.waiting_actions[action] = Queue()
+            self.waiting_actions[action] = deque()
 
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
@@ -110,11 +110,11 @@ class Client:
         if preamble[0] & 128 == 0: # action
             status = preamble[0]
             action = preamble[1]
-            try: action_handler = self.waiting_actions[ACTION(action)].get_nowait()
+            try: action_handler = self.waiting_actions[ACTION(action)].pop()
             except ValueError:
                 raise
                 # TODO: handle OOB action number
-            except Empty:
+            except IndexError:
                 raise
                 # TODO: handle response for nonexistent request
 
@@ -139,7 +139,7 @@ class Client:
             pass
 
     def send_action(self, action: Action):
-        self.waiting_actions[action.type].put(action)
+        self.waiting_actions[action.type].append(action)
         self.writebuffer += action.serialize()
 
     def flush(self):
