@@ -113,46 +113,55 @@ class Client:
             preamble = self.sock.recv(2)
         except BlockingIOError:
             return
-
         if not preamble:
             sys.stderr.write('server disconnected\n')
             exit(0)
         elif len(preamble) < 2: raise BadMessage
 
-        if preamble[0] & 128 == 0: # action
-            status = preamble[0]
-            action = preamble[1]
+        # process entire input buffer
+        while preamble:
+            if preamble[0] & 128 == 0: # action
+                status = preamble[0]
+                action = preamble[1]
 
-            try: action_handler = self.waiting_actions[ACTION(action)].pop()
-            except ValueError:
-                raise
-                # TODO: handle OOB action number
-            except IndexError:
-                raise
-                # TODO: handle response for nonexistent request
+                try: action_handler = self.waiting_actions[ACTION(action)].pop()
+                except ValueError:
+                    raise
+                    # TODO: handle OOB action number
+                except IndexError:
+                    raise
+                    # TODO: handle response for nonexistent request
 
-            try: msg_len = action_handler.len(STATUS(status))
-            except ValueError:
-                raise
-                # TODO: handle OOB status code
+                try: msg_len = action_handler.len(STATUS(status))
+                except ValueError:
+                    raise
+                    # TODO: handle OOB status code
 
-            message = self.sock.recv(msg_len)
-            if len(message) < msg_len:
-                raise BadMessage('unexpected end of message')
+                message = self.sock.recv(msg_len)
+                if len(message) < msg_len:
+                    raise BadMessage('unexpected end of message')
 
-            try: action_handler.parse_response(STATUS(status), message)
-            except Action.BadStatus:
-                raise
-                # TODO: handle
-            except HelloAction.Unsupported:
-                raise
-                # TODO: handle
-            try: action_handler.finish(self)
-            except Action.Unready:
-                raise
-                # TODO: handle
-        else: # push
-            pass
+                try: action_handler.parse_response(STATUS(status), message)
+                except Action.BadStatus:
+                    raise
+                    # TODO: handle
+                except HelloAction.Unsupported:
+                    raise
+                    # TODO: handle
+                try: action_handler.finish(self)
+                except Action.Unready:
+                    raise
+                    # TODO: handle
+            else: # push
+                pass
+
+            try:
+                preamble = self.sock.recv(2)
+            except BlockingIOError:
+                return
+            if not preamble:
+                break
+            elif len(preamble) < 2: raise BadMessage
 
     def send_action(self, action: Action):
         self.waiting_actions[action.type].append(action)

@@ -116,6 +116,7 @@ class Server:
                     session = self.sessions[key.fd]
                 else:
                     session = self.new_session(key.fileobj)
+
                 if mask & selectors.EVENT_READ:
                     callback(session)
                 if mask & selectors.EVENT_WRITE:
@@ -139,8 +140,7 @@ class Server:
 
     # handle an action message from a session
     def cb_handle(self, session: Session) :
-        try:
-            preamble = session.sock.recv(1)
+        try: preamble = session.sock.recv(1)
         except ConnectionResetError:
             sys.stderr.write(f'CONNECTION RESET FOR USER {session.user_id}\n')
             self.disconnect(session)
@@ -153,22 +153,32 @@ class Server:
             self.disconnect(session)
             return
 
-        action = preamble[0]
+        # exhaust the entire input buffer
+        while preamble:
+            action = preamble[0]
 
-        try: handler = Server.handlers[ACTION(action)]
-        except:
-            sys.stderr.write(f'UNSUPPORTED ACTION: {action}\n')
-            session.send(ResponsePreamble(action, STATUS.UNSUPPORTED).pack())
-            return
+            try: handler = Server.handlers[ACTION(action)]
+            except:
+                sys.stderr.write(f'UNSUPPORTED ACTION: {action}\n')
+                session.send(ResponsePreamble(action, STATUS.UNSUPPORTED).pack())
+                return
 
-        msg_len = handler.len(session.protocol)
-        message = session.sock.recv(msg_len)
-        if len(message) < msg_len:
-            session.send(ResponsePreamble(action, STATUS.BAD_FORMAT).pack())
-            return
+            msg_len = handler.len(session.protocol)
+            message = session.sock.recv(msg_len)
+            if len(message) < msg_len:
+                session.send(ResponsePreamble(action, STATUS.BAD_FORMAT).pack())
+                return
 
-        response = handler.handle(self, session, message)
-        session.send(response)
+            response = handler.handle(self, session, message)
+            session.send(response)
+
+            try: preamble = session.sock.recv(1)
+            except ConnectionResetError:
+                sys.stderr.write(f'CONNECTION RESET FOR USER {session.user_id}\n')
+                self.disconnect(session)
+                return
+            except BlockingIOError:
+                return
 
     def disconnect(self, session: Session):
         print(f'user {session.user_id} hung up.', file=sys.stderr)

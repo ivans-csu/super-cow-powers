@@ -171,8 +171,9 @@ class TestClientHello(unittest.TestCase):
         c.send_action(client.HelloAction(0, 0x486))
         sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)
         sock.i += struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x486)
+
         c.handle()
-        c.handle()
+        self.assertEqual(len(sock.i), 0) # ensure handle consumed the whole input buffer
         self.assertEqual(c.user_id, 0x486)
         self.assertEqual(c.protocol_version, server.Server.max_version)
 
