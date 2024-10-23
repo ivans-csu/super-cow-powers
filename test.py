@@ -119,6 +119,40 @@ class TestServerHello(unittest.TestCase):
             response = ResponsePreamble.unpack(mc.o)
             self.assertEqual(response, ResponsePreamble(ACTION.HELLO, STATUS.BAD_FORMAT))
 
+    def test_dup(self):
+        s = server.Server()
+        mc = MockConn(fd = 1)
+
+        session = s.new_session(mc)
+
+        mc.i = client.HelloAction(s.min_version, 0x486).serialize()
+        mc.i += mc.i
+        s.cb_handle(session)
+        session.flush()
+        self.assertEqual(len(mc.i), 0) # ensure cb_handle consumed the whole input buffer
+
+        mc.o = mc.o[4:] # skip first OK response
+        response = ResponsePreamble.unpack(mc.o)
+        self.assertEqual(response, ResponsePreamble(ACTION.HELLO, STATUS.INVALID))
+        self.assertEqual(mc.o[2:], struct.pack('!I', 0x486))
+
+    def test_sock_panic(self):
+        s = server.Server()
+        mc = MockConn(fd = 1)
+
+        session = s.new_session(mc)
+
+        mc.i = client.HelloAction(s.min_version, 0x486).serialize()
+        mc.i += client.HelloAction(s.min_version, 0x1134).serialize()
+        s.cb_handle(session)
+        session.flush()
+        self.assertEqual(len(mc.i), 0) # ensure cb_handle consumed the whole input buffer
+
+        mc.o = mc.o[4:] # skip first OK response
+        response = ResponsePreamble.unpack(mc.o)
+        self.assertEqual(response, ResponsePreamble(ACTION.HELLO, STATUS.INVALID))
+        self.assertEqual(mc.o[2:], struct.pack('!I', 0x486))
+
 class TestClientHello(unittest.TestCase):
     def test_ok(self):
         c = client.Client()

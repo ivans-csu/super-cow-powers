@@ -25,8 +25,8 @@ class Game:
 
 class Session:
     def __init__(self, sock):
-        self.game: int
-        self.user_id: int
+        self.game = -1
+        self.user_id = -1
         self.protocol = 0 # init protocol always 0 for HELLO
         self.sock = sock
         self.write_buf = bytes()
@@ -62,6 +62,12 @@ class HelloHandler(Handler):
     @staticmethod
     def handle(server, session, message) -> bytes:
         max_version, user_id = struct.unpack('!HI', message)
+
+        # session already exists for socket!
+        if session.user_id != -1:
+            sockfd = session.sock.fileno()
+            return ResponsePreamble(ACTION.HELLO, STATUS.INVALID).pack() + \
+                    struct.pack('!I', server.sessions[sockfd].user_id)
 
         if max_version < server.min_version:
             preamble = ResponsePreamble(ACTION.HELLO, STATUS.UNSUPPORTED).pack()
