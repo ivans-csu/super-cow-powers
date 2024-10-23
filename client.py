@@ -34,13 +34,16 @@ class HelloAction(Action):
     type = ACTION.HELLO
 
     class Unsupported(Exception): ...
+    class SocketPanic(Exception): ...
 
     def __init__(self, max_protocol: int, user_id: int):
         self.protocol = max_protocol
         self.user_id = user_id
         self.ready = False
 
-    def len(self, status): return 2
+    def len(self, status):
+        if status == STATUS.INVALID: return 4
+        else: return 2
 
     def serialize(self):
         return struct.pack('!BHI', ACTION.HELLO, self.protocol, self.user_id)
@@ -52,6 +55,11 @@ class HelloAction(Action):
         elif status == STATUS.UNSUPPORTED:
             self.protocol = struct.unpack('!H', message)[0]
             raise self.Unsupported
+        elif status == STATUS.INVALID:
+            user_id = struct.unpack('!I', message)[0]
+            if user_id != self.user_id:
+                raise self.SocketPanic('PANIC! Server reports socket already in use by another user!  This is a critical server bug!')
+            # else ignore
         else: raise Action.BadStatus(status)
         self.ready = True
 
@@ -62,6 +70,7 @@ class HelloAction(Action):
         sys.stderr.write(f'new session established. user {self.user_id} protocol {self.protocol}\n')
 
 class BadMessage(Exception): ...
+class Invalid(Exception): ...
 
 class Client:
     min_protocol = 0
@@ -113,6 +122,7 @@ class Client:
         if preamble[0] & 128 == 0: # action
             status = preamble[0]
             action = preamble[1]
+
             try: action_handler = self.waiting_actions[ACTION(action)].pop()
             except ValueError:
                 raise

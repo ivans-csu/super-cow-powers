@@ -155,4 +155,36 @@ class TestClientHello(unittest.TestCase):
             except client.BadMessage: pass
             else: self.fail()
 
+        for size in (5,4,3,2,1):
+            c.send_action(client.HelloAction(0, 0x486))
+            sock.i = struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x486)[:size]
+            try: c.handle()
+            except client.BadMessage: pass
+            else: self.fail()
+
+    # duplicate HELLO should fail silently if server already knows us
+    def test_dup(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.HelloAction(0, 0x486))
+        c.send_action(client.HelloAction(0, 0x486))
+        sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)
+        sock.i += struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x486)
+        c.handle()
+        c.handle()
+        self.assertEqual(c.user_id, 0x486)
+        self.assertEqual(c.protocol_version, server.Server.max_version)
+
+    # server thinks duplicate HELLO, but it's stuck with someone else's session on our socket
+    def test_socketpanic(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.HelloAction(0, 0x486))
+        sock.i += struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x1134)
+        try: c.handle()
+        except client.HelloAction.SocketPanic: pass
+        else: self.fail()
+
 unittest.main()

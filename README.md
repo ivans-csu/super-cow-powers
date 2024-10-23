@@ -83,7 +83,7 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
 (field name) : d(width in bits)
 
 #### conditional field
-*(field name) : (prefix)(width in bits) : IF (condition)
+?(field name) : (prefix)(width in bits) : IF (condition)
 
 ## Overview
 ### Client Packets
@@ -149,7 +149,10 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
 #### response
   - status UNSUPPORTED and the minimum protocol version it supports  
   *OR*
+  - status INVALID and user id if a session already exists on socket  
+  *OR*
   - specifies the protocol version it will use going forwards
+
   - if the client does not support the server's advertised protocol version, it simply closes the connection
 
 ### 1 - JOIN
@@ -240,14 +243,15 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
   max version number : 16  
   user id : 32
 ##### response
-  version number : 16  
+  ?version number : 16 : status != INVALID  
+  ?user id : 32 : status = INVALID  
 
 #### 1 - JOIN
 ##### request
   game id : 32
 ##### response
-  *game id : 32 : IF status = OK  
-  *GAMESTATE message : d136 : IF status = OK
+  ?game id : 32 : IF status = OK  
+  ?GAMESTATE message : d136 : IF status = OK
 
 #### 2 - MOVE
 ##### request
