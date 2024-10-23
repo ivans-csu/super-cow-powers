@@ -52,7 +52,7 @@ class TestServerHello(unittest.TestCase):
     def test_ok(self):
         s = server.Server()
         mc = MockConn(fd = 1)
-        mc.i = struct.pack('!BHI', ACTION.HELLO, s.max_version, 0x486)
+        mc.i = client.HelloAction(s.max_version, 0x486).serialize()
 
         session = s.new_session(mc)
         s.cb_handle(session)
@@ -65,8 +65,8 @@ class TestServerHello(unittest.TestCase):
         s = server.Server()
         mc = MockConn(fd = 1)
         mc2 = MockConn(fd = 2)
-        mc.i = struct.pack('!BHI', ACTION.HELLO, s.max_version, 0x486)
-        mc2.i = struct.pack('!BHI', ACTION.HELLO, s.max_version, 0x1134)
+        mc.i = client.HelloAction(s.max_version, 0x486).serialize()
+        mc2.i = client.HelloAction(s.max_version, 0x1134).serialize()
 
         session = s.new_session(mc)
         session2 = s.new_session(mc2)
@@ -84,7 +84,7 @@ class TestServerHello(unittest.TestCase):
     def test_too_new(self):
         s = server.Server()
         mc = MockConn(fd = 1)
-        mc.i = struct.pack('!BHI', ACTION.HELLO, s.max_version + 1, 0x486)
+        mc.i = client.HelloAction(s.max_version + 1, 0x486).serialize()
         session = s.new_session(mc)
 
         s.cb_handle(session)
@@ -95,7 +95,7 @@ class TestServerHello(unittest.TestCase):
     def test_too_old(self):
         s = server.Server()
         mc = MockConn(fd = 1)
-        mc.i = struct.pack('!BHI', ACTION.HELLO, s.min_version, 0x486)
+        mc.i = client.HelloAction(s.min_version, 0x486).serialize()
         session = s.new_session(mc)
 
         s.min_version = s.max_version = s.max_version + 1
