@@ -61,6 +61,8 @@ class HelloAction(Action):
         client.user_id = self.user_id
         sys.stderr.write(f'new session established. user {self.user_id} protocol {self.protocol}\n')
 
+class BadMessage(Exception): ...
+
 class Client:
     min_protocol = 0
     max_protocol = 0
@@ -106,6 +108,7 @@ class Client:
         if not preamble:
             sys.stderr.write('server disconnected\n')
             exit(0)
+        elif len(preamble) < 2: raise BadMessage
 
         if preamble[0] & 128 == 0: # action
             status = preamble[0]
@@ -124,6 +127,9 @@ class Client:
                 # TODO: handle OOB status code
 
             message = self.sock.recv(msg_len)
+            if len(message) < msg_len:
+                raise BadMessage('unexpected end of message')
+
             try: action_handler.parse_response(STATUS(status), message)
             except Action.BadStatus:
                 raise

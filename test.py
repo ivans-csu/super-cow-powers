@@ -105,6 +105,20 @@ class TestServerHello(unittest.TestCase):
 
         self.assertEqual(mc.o, struct.pack('!BBH', STATUS.UNSUPPORTED, ACTION.HELLO, s.min_version))
 
+    def test_too_short(self):
+        s = server.Server()
+        mc = MockConn(fd = 1)
+
+        session = s.new_session(mc)
+
+        for size in (3,2,1):
+            mc.i = client.HelloAction(s.min_version, 0x486).serialize()[:size]
+            s.cb_handle(session)
+            session.flush()
+
+            response = ResponsePreamble.unpack(mc.o)
+            self.assertEqual(response, ResponsePreamble(ACTION.HELLO, STATUS.BAD_FORMAT))
+
 class TestClientHello(unittest.TestCase):
     def test_ok(self):
         c = client.Client()
@@ -129,5 +143,16 @@ class TestClientHello(unittest.TestCase):
         try: c.handle()
         except client.HelloAction.Unsupported: pass
         else: self.fail()
+
+    def test_too_short(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        for size in (3,2,1):
+            c.send_action(client.HelloAction(0, 0x486))
+            sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)[:size]
+            try: c.handle()
+            except client.BadMessage: pass
+            else: self.fail()
 
 unittest.main()
