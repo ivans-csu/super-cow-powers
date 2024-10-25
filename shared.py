@@ -1,4 +1,5 @@
 from enum import IntEnum
+from typing import Self
 import struct
 
 class ACTION(IntEnum):
@@ -34,7 +35,7 @@ class ResponsePreamble:
         return f'ResponsePreamble(action={action}, status={status})'
 
     @staticmethod
-    def unpack(msg: bytes):
+    def unpack(msg: bytes) -> Self:
         msg = msg[:2]
         status, action = struct.unpack('BB', msg)
         return ResponsePreamble(action, status)
@@ -55,7 +56,7 @@ class PushPreamble:
         return f'PushPreamble(type={type})'
 
     @staticmethod
-    def unpack(msg: bytes):
+    def unpack(msg: bytes) -> Self:
         msg = msg[:2]
         return PushPreamble(struct.unpack('!H', msg)[0])
 

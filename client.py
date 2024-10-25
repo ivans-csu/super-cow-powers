@@ -24,7 +24,7 @@ class Action:
     def serialize(self) -> bytes: ...
 
     # unpack the response message, update internal state
-    def parse_response(self, status: STATUS, message: bytes): ...
+    def parse_response(self, status: STATUS|int, message: bytes): ...
 
     # once we've parsed the response, perform whatever internal client state manipulation is appropriate
     # raises ActionUnreadyException if called before parse_response
@@ -48,7 +48,7 @@ class HelloAction(Action):
     def serialize(self):
         return struct.pack('!BHI', ACTION.HELLO, self.protocol, self.user_id)
 
-    def parse_response(self, status: STATUS, message: bytes):
+    def parse_response(self, status: STATUS|int, message: bytes):
         if status == STATUS.OK:
             self.protocol = struct.unpack('!H', message)[0]
             if self.protocol < Client.min_protocol: raise self.Unsupported

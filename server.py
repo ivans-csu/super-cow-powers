@@ -41,8 +41,6 @@ class Session:
         except BlockingIOError:
             return
 
-class Server: ... # python sucks
-
 # Handler interface
 class Handler:
     # returns the number of bytes to be consumed to decode this message type for the specified protocol version
@@ -53,7 +51,7 @@ class Handler:
     # perform the action on the server; may mutate internal state
     # return a response
     @staticmethod
-    def handle(server: Server, session: Session, message: bytes) -> bytes: ...
+    def handle(server: 'Server', session: Session, message: bytes) -> bytes: ...
 
 class HelloHandler(Handler):
     @staticmethod
