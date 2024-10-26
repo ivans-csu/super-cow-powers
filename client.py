@@ -3,8 +3,8 @@ import selectors
 import socket
 import struct
 import sys
+from collections import deque
 from shared import *
-from queue import Queue, Empty
 
 
 # interface
@@ -24,7 +24,7 @@ class Action:
     def serialize(self) -> bytes: ...
 
     # unpack the response message, update internal state
-    def parse_response(self, status: STATUS, message: bytes): ...
+    def parse_response(self, status: STATUS|int, message: bytes): ...
 
     # once we've parsed the response, perform whatever internal client state manipulation is appropriate
     # raises ActionUnreadyException if called before parse_response
@@ -34,24 +34,32 @@ class HelloAction(Action):
     type = ACTION.HELLO
 
     class Unsupported(Exception): ...
+    class SocketPanic(Exception): ...
 
     def __init__(self, max_protocol: int, user_id: int):
         self.protocol = max_protocol
         self.user_id = user_id
         self.ready = False
 
-    def len(self, status): return 2
+    def len(self, status):
+        if status == STATUS.INVALID: return 4
+        else: return 2
 
     def serialize(self):
         return struct.pack('!BHI', ACTION.HELLO, self.protocol, self.user_id)
 
-    def parse_response(self, status: STATUS, message: bytes):
+    def parse_response(self, status: STATUS|int, message: bytes):
         if status == STATUS.OK:
             self.protocol = struct.unpack('!H', message)[0]
             if self.protocol < Client.min_protocol: raise self.Unsupported
         elif status == STATUS.UNSUPPORTED:
             self.protocol = struct.unpack('!H', message)[0]
             raise self.Unsupported
+        elif status == STATUS.INVALID:
+            user_id = struct.unpack('!I', message)[0]
+            if user_id != self.user_id:
+                raise self.SocketPanic('PANIC! Server reports socket already in use by another user!  This is a critical server bug!')
+            # else ignore
         else: raise Action.BadStatus(status)
         self.ready = True
 
@@ -60,6 +68,9 @@ class HelloAction(Action):
         client.protocol_version = self.protocol
         client.user_id = self.user_id
         sys.stderr.write(f'new session established. user {self.user_id} protocol {self.protocol}\n')
+
+class BadMessage(Exception): ...
+class Invalid(Exception): ...
 
 class Client:
     min_protocol = 0
@@ -70,10 +81,10 @@ class Client:
         self.sel = selectors.DefaultSelector()
         self.sock: socket.socket
         self.user_id = -1
-        self.waiting_actions: dict[ACTION, Queue[Action]] = {}
+        self.waiting_actions: dict[ACTION, deque[Action]] = {}
         self.writebuffer = bytes()
         for action in ACTION:
-            self.waiting_actions[action] = Queue()
+            self.waiting_actions[action] = deque()
 
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
@@ -102,44 +113,58 @@ class Client:
             preamble = self.sock.recv(2)
         except BlockingIOError:
             return
-
         if not preamble:
             sys.stderr.write('server disconnected\n')
             exit(0)
+        elif len(preamble) < 2: raise BadMessage
 
-        if preamble[0] & 128 == 0: # action
-            status = preamble[0]
-            action = preamble[1]
-            try: action_handler = self.waiting_actions[ACTION(action)].get_nowait()
-            except ValueError:
-                raise
-                # TODO: handle OOB action number
-            except Empty:
-                raise
-                # TODO: handle response for nonexistent request
+        # process entire input buffer
+        while preamble:
+            if preamble[0] & 128 == 0: # action
+                status = preamble[0]
+                action = preamble[1]
 
-            try: msg_len = action_handler.len(STATUS(status))
-            except ValueError:
-                raise
-                # TODO: handle OOB status code
+                try: action_handler = self.waiting_actions[ACTION(action)].pop()
+                except ValueError:
+                    raise
+                    # TODO: handle OOB action number
+                except IndexError:
+                    raise
+                    # TODO: handle response for nonexistent request
 
-            message = self.sock.recv(msg_len)
-            try: action_handler.parse_response(STATUS(status), message)
-            except Action.BadStatus:
-                raise
-                # TODO: handle
-            except HelloAction.Unsupported:
-                raise
-                # TODO: handle
-            try: action_handler.finish(self)
-            except Action.Unready:
-                raise
-                # TODO: handle
-        else: # push
-            pass
+                try: msg_len = action_handler.len(STATUS(status))
+                except ValueError:
+                    raise
+                    # TODO: handle OOB status code
+
+                message = self.sock.recv(msg_len)
+                if len(message) < msg_len:
+                    raise BadMessage('unexpected end of message')
+
+                try: action_handler.parse_response(STATUS(status), message)
+                except Action.BadStatus:
+                    raise
+                    # TODO: handle
+                except HelloAction.Unsupported:
+                    raise
+                    # TODO: handle
+                try: action_handler.finish(self)
+                except Action.Unready:
+                    raise
+                    # TODO: handle
+            else: # push
+                pass
+
+            try:
+                preamble = self.sock.recv(2)
+            except BlockingIOError:
+                return
+            if not preamble:
+                break
+            elif len(preamble) < 2: raise BadMessage
 
     def send_action(self, action: Action):
-        self.waiting_actions[action.type].put(action)
+        self.waiting_actions[action.type].append(action)
         self.writebuffer += action.serialize()
 
     def flush(self):

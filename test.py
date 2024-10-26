@@ -105,6 +105,54 @@ class TestServerHello(unittest.TestCase):
 
         self.assertEqual(mc.o, struct.pack('!BBH', STATUS.UNSUPPORTED, ACTION.HELLO, s.min_version))
 
+    def test_too_short(self):
+        s = server.Server()
+        mc = MockConn(fd = 1)
+
+        session = s.new_session(mc)
+
+        for size in (3,2,1):
+            mc.i = client.HelloAction(s.min_version, 0x486).serialize()[:size]
+            s.cb_handle(session)
+            session.flush()
+
+            response = ResponsePreamble.unpack(mc.o)
+            self.assertEqual(response, ResponsePreamble(ACTION.HELLO, STATUS.BAD_FORMAT))
+
+    def test_dup(self):
+        s = server.Server()
+        mc = MockConn(fd = 1)
+
+        session = s.new_session(mc)
+
+        mc.i = client.HelloAction(s.min_version, 0x486).serialize()
+        mc.i += mc.i
+        s.cb_handle(session)
+        session.flush()
+        self.assertEqual(len(mc.i), 0) # ensure cb_handle consumed the whole input buffer
+
+        mc.o = mc.o[4:] # skip first OK response
+        response = ResponsePreamble.unpack(mc.o)
+        self.assertEqual(response, ResponsePreamble(ACTION.HELLO, STATUS.INVALID))
+        self.assertEqual(mc.o[2:], struct.pack('!I', 0x486))
+
+    def test_sock_panic(self):
+        s = server.Server()
+        mc = MockConn(fd = 1)
+
+        session = s.new_session(mc)
+
+        mc.i = client.HelloAction(s.min_version, 0x486).serialize()
+        mc.i += client.HelloAction(s.min_version, 0x1134).serialize()
+        s.cb_handle(session)
+        session.flush()
+        self.assertEqual(len(mc.i), 0) # ensure cb_handle consumed the whole input buffer
+
+        mc.o = mc.o[4:] # skip first OK response
+        response = ResponsePreamble.unpack(mc.o)
+        self.assertEqual(response, ResponsePreamble(ACTION.HELLO, STATUS.INVALID))
+        self.assertEqual(mc.o[2:], struct.pack('!I', 0x486))
+
 class TestClientHello(unittest.TestCase):
     def test_ok(self):
         c = client.Client()
@@ -128,6 +176,50 @@ class TestClientHello(unittest.TestCase):
         sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)
         try: c.handle()
         except client.HelloAction.Unsupported: pass
+        else: self.fail()
+
+    def test_too_short(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        for size in (3,2,1):
+            c.send_action(client.HelloAction(0, 0x486))
+            sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)[:size]
+            try: c.handle()
+            except client.BadMessage: pass
+            else: self.fail()
+
+        for size in (5,4,3,2,1):
+            c.send_action(client.HelloAction(0, 0x486))
+            sock.i = struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x486)[:size]
+            try: c.handle()
+            except client.BadMessage: pass
+            else: self.fail()
+
+    # duplicate HELLO should fail silently if server already knows us
+    def test_dup(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.HelloAction(0, 0x486))
+        c.send_action(client.HelloAction(0, 0x486))
+        sock.i = struct.pack('!BBH', STATUS.OK, ACTION.HELLO, server.Server.max_version)
+        sock.i += struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x486)
+
+        c.handle()
+        self.assertEqual(len(sock.i), 0) # ensure handle consumed the whole input buffer
+        self.assertEqual(c.user_id, 0x486)
+        self.assertEqual(c.protocol_version, server.Server.max_version)
+
+    # server thinks duplicate HELLO, but it's stuck with someone else's session on our socket
+    def test_socketpanic(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.HelloAction(0, 0x486))
+        sock.i += struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x1134)
+        try: c.handle()
+        except client.HelloAction.SocketPanic: pass
         else: self.fail()
 
 unittest.main()

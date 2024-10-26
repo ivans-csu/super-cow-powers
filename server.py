@@ -25,8 +25,8 @@ class Game:
 
 class Session:
     def __init__(self, sock):
-        self.game: int
-        self.user_id: int
+        self.game = -1
+        self.user_id = -1
         self.protocol = 0 # init protocol always 0 for HELLO
         self.sock = sock
         self.write_buf = bytes()
@@ -41,8 +41,6 @@ class Session:
         except BlockingIOError:
             return
 
-class Server: ... # python sucks
-
 # Handler interface
 class Handler:
     # returns the number of bytes to be consumed to decode this message type for the specified protocol version
@@ -53,7 +51,7 @@ class Handler:
     # perform the action on the server; may mutate internal state
     # return a response
     @staticmethod
-    def handle(server: Server, session: Session, message: bytes) -> bytes: ...
+    def handle(server: 'Server', session: Session, message: bytes) -> bytes: ...
 
 class HelloHandler(Handler):
     @staticmethod
@@ -62,6 +60,12 @@ class HelloHandler(Handler):
     @staticmethod
     def handle(server, session, message) -> bytes:
         max_version, user_id = struct.unpack('!HI', message)
+
+        # session already exists for socket!
+        if session.user_id != -1:
+            sockfd = session.sock.fileno()
+            return ResponsePreamble(ACTION.HELLO, STATUS.INVALID).pack() + \
+                    struct.pack('!I', server.sessions[sockfd].user_id)
 
         if max_version < server.min_version:
             preamble = ResponsePreamble(ACTION.HELLO, STATUS.UNSUPPORTED).pack()
@@ -116,6 +120,7 @@ class Server:
                     session = self.sessions[key.fd]
                 else:
                     session = self.new_session(key.fileobj)
+
                 if mask & selectors.EVENT_READ:
                     callback(session)
                 if mask & selectors.EVENT_WRITE:
@@ -139,8 +144,7 @@ class Server:
 
     # handle an action message from a session
     def cb_handle(self, session: Session) :
-        try:
-            preamble = session.sock.recv(1)
+        try: preamble = session.sock.recv(1)
         except ConnectionResetError:
             sys.stderr.write(f'CONNECTION RESET FOR USER {session.user_id}\n')
             self.disconnect(session)
@@ -153,22 +157,32 @@ class Server:
             self.disconnect(session)
             return
 
-        action = preamble[0]
+        # exhaust the entire input buffer
+        while preamble:
+            action = preamble[0]
 
-        try: handler = Server.handlers[ACTION(action)]
-        except:
-            sys.stderr.write(f'UNSUPPORTED ACTION: {action}\n')
-            session.send(ResponsePreamble(action, STATUS.UNSUPPORTED).pack())
-            return
+            try: handler = Server.handlers[ACTION(action)]
+            except:
+                sys.stderr.write(f'UNSUPPORTED ACTION: {action}\n')
+                session.send(ResponsePreamble(action, STATUS.UNSUPPORTED).pack())
+                return
 
-        msg_len = handler.len(session.protocol)
-        message = session.sock.recv(msg_len)
-        if len(message) < msg_len:
-            session.send(ResponsePreamble(action, STATUS.BAD_FORMAT).pack())
-            return
+            msg_len = handler.len(session.protocol)
+            message = session.sock.recv(msg_len)
+            if len(message) < msg_len:
+                session.send(ResponsePreamble(action, STATUS.BAD_FORMAT).pack())
+                return
 
-        response = handler.handle(self, session, message)
-        session.send(response)
+            response = handler.handle(self, session, message)
+            session.send(response)
+
+            try: preamble = session.sock.recv(1)
+            except ConnectionResetError:
+                sys.stderr.write(f'CONNECTION RESET FOR USER {session.user_id}\n')
+                self.disconnect(session)
+                return
+            except BlockingIOError:
+                return
 
     def disconnect(self, session: Session):
         print(f'user {session.user_id} hung up.', file=sys.stderr)
