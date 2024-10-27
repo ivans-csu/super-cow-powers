@@ -170,6 +170,11 @@ class Client:
             if not preamble:
                 break
             elif len(preamble) < 2: raise BadMessage
+    def disconnect(self):
+        try: sn = self.sock.getsockname()
+        except: sn = self.sock.fileno()
+        sys.stderr.write(f'released {sn}\n')
+        self.sock.close()
 
     def send_action(self, action: Action):
         self.waiting_actions[action.type].append(action)
@@ -181,8 +186,7 @@ class Client:
             self.writebuffer = self.writebuffer[sent:]
 
     def stop(self):
-        sys.stderr.write(f'released {self.sock.getsockname()}\n')
-        self.sock.close()
+        self.disconnect()
 
 if __name__ == '__main__':
     client = Client()

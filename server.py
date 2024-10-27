@@ -31,6 +31,14 @@ class Session:
         self.sock = sock
         self.write_buf = bytes()
 
+    def __repr__(self):
+        addr = 'DEAD'
+        try:
+            addr = self.sock.getpeername()
+            addr = addr[0]+':'+addr[1]
+        except: pass
+        return(f'<fd: {self.sock.fileno()}, addr:{addr}, user:{self.user_id}, prtcl:{self.protocol}>')
+
     def send(self, message: bytes):
         self.write_buf += message
 
@@ -64,6 +72,7 @@ class HelloHandler(Handler):
         # session already exists for socket!
         if session.user_id != -1:
             sockfd = session.sock.fileno()
+            sys.stderr.write(f'duplicate HELLO from {session}\n')
             return ResponsePreamble(ACTION.HELLO, STATUS.INVALID).pack() + \
                     struct.pack('!I', server.sessions[sockfd].user_id)
 
@@ -79,7 +88,7 @@ class HelloHandler(Handler):
         preamble = ResponsePreamble(ACTION.HELLO).pack()
         message = struct.pack('!H', version)
 
-        print(f'new session for user {session.user_id} protocol {session.protocol}', file=sys.stderr)
+        print(f'new session for {session}', file=sys.stderr)
         return preamble + message
 
 class Server:
@@ -188,7 +197,7 @@ class Server:
                 return
 
     def disconnect(self, session: Session):
-        print(f'user {session.user_id} hung up.', file=sys.stderr)
+        print(f'{session} hung up.', file=sys.stderr)
         if session.sock.fileno() in self.sessions:
             del(self.sessions[session.sock.fileno()])
         self.sel.unregister(session.sock)
