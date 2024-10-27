@@ -169,8 +169,11 @@ class Server:
             self.disconnect(session)
             return
 
+        bytes_read = 0
+
         # exhaust the entire input buffer
         while preamble:
+            ++bytes_read
             action = preamble[0]
 
             try: handler = Server.handlers[ACTION(action)]
@@ -181,18 +184,20 @@ class Server:
 
             msg_len = handler.len(session.protocol)
             message = session.sock.recv(msg_len)
-            if len(message) < msg_len:
+            nread = len(message)
+            bytes_read += nread
+            if nread < msg_len:
                 session.send(ResponsePreamble(action, STATUS.BAD_FORMAT).pack())
                 return
 
             response = handler.handle(self, session, message)
             session.send(response)
 
-            try: preamble = session.sock.recv(1)
-            except ConnectionResetError:
-                sys.stderr.write(f'CONNECTION RESET FOR USER {session.user_id}\n')
-                self.disconnect(session)
+            if bytes_read >= 1400:
+                sys.stderr.write(f'DOS protection: {session} sent {bytes_read}/1400 bytes!  Aborting read\n')
                 return
+
+            try: preamble = session.sock.recv(1)
             except BlockingIOError:
                 return
 
