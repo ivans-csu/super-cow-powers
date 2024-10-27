@@ -122,10 +122,17 @@ class Server:
                     session = self.new_session(key.fileobj)
 
                 if mask & selectors.EVENT_READ:
-                    callback(session)
+                    try: callback(session)
+                    except ConnectionError as e:
+                        sys.stderr.write(f'CONNECTION ERROR: {session} -> {e}\n')
+                        self.disconnect(session)
+                        continue
                 if mask & selectors.EVENT_WRITE:
                     if session.write_buf:
-                        session.flush()
+                        try: session.flush()
+                        except ConnectionError as e:
+                            sys.stderr.write(f'CONNECTION ERROR: {session} -> {e}\n')
+                            self.disconnect(session)
 
     def stop(self):
         sys.stderr.write(f'released {self.main_sock.getsockname()}\n')
@@ -145,10 +152,6 @@ class Server:
     # handle an action message from a session
     def cb_handle(self, session: Session) :
         try: preamble = session.sock.recv(1)
-        except ConnectionResetError:
-            sys.stderr.write(f'CONNECTION RESET FOR USER {session.user_id}\n')
-            self.disconnect(session)
-            return
         except BlockingIOError:
             return
 

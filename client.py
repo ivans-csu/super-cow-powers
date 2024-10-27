@@ -104,9 +104,17 @@ class Client:
             events = self.sel.select()
             for _, mask in events:
                 if mask & selectors.EVENT_READ:
-                    self.handle()
+                    try: self.handle()
+                    except ConnectionError as e:
+                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                        self.disconnect()
+                        exit(1)
                 if mask & selectors.EVENT_WRITE:
-                    self.flush()
+                    try: self.flush()
+                    except ConnectionError as e:
+                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                        self.disconnect()
+                        exit(1)
 
     def handle(self):
         try:
