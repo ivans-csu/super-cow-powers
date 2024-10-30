@@ -132,7 +132,7 @@ class Client:
                 status = preamble[0]
                 action = preamble[1]
 
-                try: action_handler = self.waiting_actions[ACTION(action)].pop()
+                try: action_handler = self.waiting_actions[ACTION(action)].popleft()
                 except ValueError:
                     raise
                     # TODO: handle OOB action number

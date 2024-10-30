@@ -222,4 +222,16 @@ class TestClientHello(unittest.TestCase):
         except client.HelloAction.SocketPanic: pass
         else: self.fail()
 
+    # ensure response handling in same order as requests
+    def test_handle_order(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.HelloAction(0, 0x486))
+        c.send_action(client.HelloAction(0, 0x1134))
+        sock.i += struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x486)
+        sock.i += struct.pack('!BBI', STATUS.INVALID, ACTION.HELLO, 0x1134)
+        c.handle()
+        # these will both fail silently.  If they throw SocketPanic, response order is wrong
+
 unittest.main()
