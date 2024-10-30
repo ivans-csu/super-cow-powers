@@ -3,20 +3,40 @@ import selectors
 import socket
 import struct
 import sys
-from collections import namedtuple
+from collections import deque
 
 from shared import *
 
 class Game:
-    # TODO: associate with sessions
-    PLAYER = IntEnum('PLAYER', 'HOST GUEST', start=0)
-    def __init__(self, creator_id, game_id):
-        self.id = game_id
-        self.turn = 1
-        self.player_ids = [creator_id, None]
+    def __init__(self, creator: 'Session', game_id: int):
+        self.id: int = game_id
+        self.host_id: int = creator.user_id
+        self.guest_id: int = -1
+        self.host_session: Session = creator
+        self.guest_session: Session = None
+        self.turn: int = 1
 
-    def __str__(self):
-        return f'id:{self.id},turn:{self.turn},players:{str(self.player_ids)}'
+    def __repr__(self):
+        return f'<id:{self.id},turn:{self.turn},host:{self.host_id},guest:{self.guest_id}>'
+
+    # attach a user session to a game, start the game if unready
+    # returns false IFF game is ready and user is not a participant
+    def join(self, session: 'Session') -> bool:
+        id = session.user_id
+        if id == self.host_id:
+            sys.stderr.write('host session {session} rejoined game {game}\n')
+            self.host_session = session
+        elif self.guest_id == -1:
+            sys.stderr.write('guest {session} joined, readied unready game {game}\n')
+            self.guest_id = id
+            self.guest_session = session
+            self.start()
+        elif id == self.guest_id:
+            sys.stderr.write('guest session {session} rejoined game {game}\n')
+            self.guest_session = session
+        else:
+            return False # unauthorized user
+        return True
 
     # notify the game creator of the started match
     def start(self):
@@ -25,7 +45,7 @@ class Game:
 
 class Session:
     def __init__(self, sock):
-        self.game = -1
+        self.game: Game = None
         self.user_id = -1
         self.protocol = 0 # init protocol always 0 for HELLO
         self.sock = sock
@@ -91,22 +111,56 @@ class HelloHandler(Handler):
         print(f'new session for {session}', file=sys.stderr)
         return preamble + message
 
+class JoinHandler(Handler):
+    @staticmethod
+    def len(protocol_version) -> int: return 4
+
+    @staticmethod
+    def handle(server, session, message) -> bytes:
+        game_id = struct.unpack('!I', message)[0]
+
+        match game_id:
+            case 1: # create private game
+                game = server.new_game(session)
+            case 0: # join matchmaking
+                if server.matchmaking_queue:
+                    game = server.matchmaking_queue.popleft()
+                    if not game.join(session):
+                        raise Exception('FATAL ERROR: matchmaking yielded unauthorized join')
+                    # else joined successfully :)
+                else:
+                    game = server.new_game(session)
+                    server.matchmaking_queue.append(game)
+            case _:
+                game_id -= 2 # offset for reserved 0,1
+                if game_id < len(server.games):
+                    game = server.games[game_id]
+                    if not game.join(session):
+                        return ResponsePreamble(ACTION.JOIN, STATUS.UNAUTHORIZED).pack()
+                    # else joined successfully :)
+                else:
+                    return ResponsePreamble(ACTION.JOIN, STATUS.INVALID).pack()
+
+        session.game = game
+        return ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', game.id)
+
 class Server:
     handlers = {
         ACTION.HELLO: HelloHandler,
+        ACTION.JOIN: JoinHandler,
     }
 
     min_version = 0
     max_version = 0
 
     def __init__(self):
-        self.games = list()
+        self.games: list[Game] = list()
         self.main_sock: socket.socket
-        self.matchmaking_queue = list()
+        self.matchmaking_queue: deque[Game] = deque()
         self.sel = selectors.DefaultSelector()
         self.sessions = dict() # map player socket fds to user_ids and games
 
-    def new_session(self, conn):
+    def new_session(self, conn) -> Session:
         session = Session(conn)
         self.sessions[conn.fileno()] = session
         return session
@@ -209,12 +263,11 @@ class Server:
         session.sock.close()
         # TODO: remove user session from game
 
-    def newGame(self, user_id):
-        game_id = len(self.games)
-        game = Game(user_id, game_id)
+    def new_game(self, session: Session) -> Game:
+        game_id = 2 + len(self.games)
+        game = Game(session, game_id)
         self.games.append(game)
-        self.matchmaking_queue.append(game)
-        print('new game added to matchmaking:', game, file=sys.stderr)
+        sys.stderr.write(f'new game created: {game}\n')
         return game
 
 if __name__ == '__main__':
