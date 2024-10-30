@@ -63,7 +63,7 @@ class Handler:
 
 class HelloHandler(Handler):
     @staticmethod
-    def len(protocol) -> int: return 6
+    def len(protocol_version) -> int: return 6
 
     @staticmethod
     def handle(server, session, message) -> bytes:
