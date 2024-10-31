@@ -11,6 +11,7 @@ from shared import *
 class Action:
     class Unready(Exception): pass
     class BadStatus(Exception): pass
+    class Ignore(Exception): pass # parse_response failed, but can be safely ignored. do not call fin
 
     # ctor is non-standardized, should contain protocol version and fields to init for a request message
 
@@ -57,10 +58,12 @@ class HelloAction(Action):
             raise self.Unsupported
         elif status == STATUS.INVALID:
             user_id = struct.unpack('!I', message)[0]
-            if user_id != self.user_id:
-                raise self.SocketPanic('PANIC! Server reports socket already in use by another user!  This is a critical server bug!')
-            # else ignore
-        else: raise Action.BadStatus(status)
+            sys.stderr.write(f'server reported duplicate HELLO\n')
+            if user_id != self.user_id: raise self.SocketPanic('PANIC! Server reports socket already in use by another user!  This is a critical server bug!')
+            else: raise Action.Ignore # don't call finish(), fail silently on duplicate HELLO for same user
+        else:
+            if type(status) == STATUS: raise Action.BadStatus(status.name)
+            raise Action.BadStatus(status)
         self.ready = True
 
     def finish(self, client):
@@ -104,9 +107,17 @@ class Client:
             events = self.sel.select()
             for _, mask in events:
                 if mask & selectors.EVENT_READ:
-                    self.handle()
+                    try: self.handle()
+                    except ConnectionError as e:
+                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                        self.disconnect()
+                        exit(1)
                 if mask & selectors.EVENT_WRITE:
-                    self.flush()
+                    try: self.flush()
+                    except ConnectionError as e:
+                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                        self.disconnect()
+                        exit(1)
 
     def handle(self):
         try:
@@ -116,15 +127,16 @@ class Client:
         if not preamble:
             sys.stderr.write('server disconnected\n')
             exit(0)
-        elif len(preamble) < 2: raise BadMessage
 
         # process entire input buffer
         while preamble:
+            if len(preamble) < 2: raise BadMessage
+
             if preamble[0] & 128 == 0: # action
                 status = preamble[0]
                 action = preamble[1]
 
-                try: action_handler = self.waiting_actions[ACTION(action)].pop()
+                try: action_handler = self.waiting_actions[ACTION(action)].popleft()
                 except ValueError:
                     raise
                     # TODO: handle OOB action number
@@ -148,20 +160,25 @@ class Client:
                 except HelloAction.Unsupported:
                     raise
                     # TODO: handle
-                try: action_handler.finish(self)
-                except Action.Unready:
-                    raise
-                    # TODO: handle
+                except HelloAction.Ignore: pass # don't finish()
+                else:
+                    try: action_handler.finish(self)
+                    except Action.Unready:
+                        raise
+                        # TODO: handle
+
             else: # push
                 pass
 
-            try:
-                preamble = self.sock.recv(2)
+            try: preamble = self.sock.recv(2)
             except BlockingIOError:
                 return
-            if not preamble:
-                break
-            elif len(preamble) < 2: raise BadMessage
+
+    def disconnect(self):
+        try: sn = self.sock.getsockname()
+        except: sn = self.sock.fileno()
+        sys.stderr.write(f'released {sn}\n')
+        self.sock.close()
 
     def send_action(self, action: Action):
         self.waiting_actions[action.type].append(action)
@@ -173,8 +190,7 @@ class Client:
             self.writebuffer = self.writebuffer[sent:]
 
     def stop(self):
-        sys.stderr.write(f'released {self.sock.getsockname()}\n')
-        self.sock.close()
+        self.disconnect()
 
 if __name__ == '__main__':
     client = Client()
