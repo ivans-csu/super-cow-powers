@@ -63,6 +63,8 @@ class PushPreamble:
     def pack(self) -> bytes:
         return struct.pack('!H', self.type)
 
+COLOR = IntEnum('COLOR', 'BLACK WHITE')
+
 class SQUARE(IntEnum):
     EMPTY = 0
     BLACK = 1
@@ -79,9 +81,14 @@ class BoardState:
             self.state[3][4] = self.state[4][3] = SQUARE.BLACK
 
     def __repr__(self):
-        output = bytearray(128)
-        i = 0
+        #output = bytearray(9 * (2 + 8 * 2)) - 9 rows(label,8 squares(value,separator))
+        output = bytearray(162)
+        output[:18] = b'  A B C D E F G H\n'
+        i = 18
         for row in range(8):
+            output[i] = 0x31 + row # '1'
+            output[i+1] = 0x20 # ' '
+            i += 2
             for col in range(8):
                 output[i] = BoardState._MAP[self.state[row][col]]
                 output[i+1] = 0x20 # ' '
