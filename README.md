@@ -278,7 +278,6 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
   - board state
     - array of 64 2-bit numbers representing spaces of the board from top left to bottom right
       - packed as though each square were a field; MSB = earlier spaces
-      - orientation relative to the target player
     - 0 - empty
     - 1 - black
     - 2 - white
