@@ -234,7 +234,62 @@ class TestClientHello(unittest.TestCase):
         c.handle()
         # these will both fail silently.  If they throw SocketPanic, response order is wrong
 
+class TestServerGamestate(unittest.TestCase):
+    def test_boardstate(self):
+        b = BoardState(False)
+        # x marks the spot
+        for i in range(8):
+            b.state[i][i] = SQUARE.WHITE
+        for i in range(8):
+            b.state[i][7-i] = SQUARE.BLACK
+
+        c = BoardState.unpack(b.pack())
+        self.assertEqual(b.state, c.state)
+
+    def test_pushstate(self):
+        mc = MockConn(fd = 1)
+        sess = server.Session(mc)
+        g = server.Game(sess, 2)
+        g.host_id = 0 # white
+        g.guest_id = 1 # black
+        bs = g.board_state.pack()
+
+        #player is white, cannot move, turn 1
+        expected = 0b10000001.to_bytes() + bs
+        self.assertEqual(g.push_gamestate(0), expected)
+
+        #player is black, can move, turn 1
+        expected = 0b01000001.to_bytes() + bs
+        self.assertEqual(g.push_gamestate(1), expected)
+
+        g.turn = 2
+        #player is white, can move, turn 2
+        expected = 0b11000010.to_bytes() + bs
+        self.assertEqual(g.push_gamestate(0), expected)
+
+        #player is black, cannot move, turn 2
+        expected = 0b00000010.to_bytes() + bs
+        self.assertEqual(g.push_gamestate(1), expected)
+
+        #up to 60 moves are theoretically possible
+        for g.turn in range(3,61):
+            gsW = g.push_gamestate(0)[0]
+            gsB = g.push_gamestate(1)[0]
+            self.assertTrue(gsW & g.turn == g.turn)
+            self.assertTrue(gsB & g.turn == g.turn)
+            self.assertTrue(gsW & 128)
+            self.assertFalse(gsB & 128)
+            if g.turn % 2:
+                self.assertTrue(gsB & 64)
+                self.assertFalse(gsW & 64)
+            else:
+                self.assertTrue(gsW & 64)
+                self.assertFalse(gsB & 64)
+
 class TestServerJoin(unittest.TestCase):
+    bs = b'\x00\x00\x00\x00\x00\x00\x02\x40\x01\x80\x00\x00\x00\x00\x00\x00' # initial board state (packed)
+    gs_white = b'\x81' + bs
+    gs_black = b'\x41' + bs
     def test_join_invalid(self):
         s = server.Server()
         mc = MockConn(fd = 1)
@@ -258,7 +313,7 @@ class TestServerJoin(unittest.TestCase):
         s.cb_handle(sess)
         sess.flush()
 
-        expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
+        expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2) + self.gs_white
         self.assertEqual(mc.o, expected)
         self.assertEqual(len(s.matchmaking_queue), 0)
         self.assertEqual(len(s.games), 1)
@@ -273,25 +328,27 @@ class TestServerJoin(unittest.TestCase):
 
     def test_join_private(self):
         s = server.Server()
-        mc = MockConn(fd = 1)
-        sess = s.new_session(mc)
-        sess.user_id = 0x486
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
 
-        mc2 = MockConn(fd = 1)
-        sess2 = s.new_session(mc2)
-        sess2.user_id = 0x1134
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
 
-        mc.i = struct.pack('!BI', ACTION.JOIN, 0x1)
-        s.cb_handle(sess)
-        sess.flush()
+        mcW.i = struct.pack('!BI', ACTION.JOIN, 0x1)
+        s.cb_handle(sessW)
+        sessW.flush()
 
-        mc2.i = struct.pack('!BI', ACTION.JOIN, 0x2)
-        s.cb_handle(sess2)
-        sess2.flush()
+        mcB.i = struct.pack('!BI', ACTION.JOIN, 0x2)
+        s.cb_handle(sessB)
+        sessB.flush()
 
-        expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
-        self.assertEqual(mc.o, expected)
-        self.assertEqual(mc2.o, expected)
+        _expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
+        expectedW = _expected + self.gs_white
+        expectedB = _expected + self.gs_black
+        self.assertEqual(mcW.o, expectedW)
+        self.assertEqual(mcB.o, expectedB)
         self.assertEqual(len(s.games), 1)
         self.assertEqual(len(s.matchmaking_queue), 0)
 
@@ -299,49 +356,51 @@ class TestServerJoin(unittest.TestCase):
         self.assertEqual(game.id, 2)
         self.assertEqual(game.host_id, 0x486)
         self.assertEqual(game.guest_id, 0x1134)
-        self.assertIs(game.host_session, sess)
-        self.assertIs(game.guest_session, sess2)
-        self.assertIs(sess.game, game)
-        self.assertIs(sess2.game, game)
+        self.assertIs(game.host_session, sessW)
+        self.assertIs(game.guest_session, sessB)
+        self.assertIs(sessW.game, game)
+        self.assertIs(sessB.game, game)
 
     def test_join_matchmaking(self):
         s = server.Server()
-        mc = MockConn(fd = 1)
-        sess = s.new_session(mc)
-        sess.user_id = 0x486
-        mc2 = MockConn(fd = 1)
-        sess2 = s.new_session(mc2)
-        sess2.user_id = 0x1134
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
 
         self.assertEqual(len(s.games), 0)
         self.assertEqual(len(s.matchmaking_queue), 0)
 
-        mc.i = struct.pack('!BI', ACTION.JOIN, 0x0)
-        s.cb_handle(sess)
-        sess.flush()
+        mcW.i = struct.pack('!BI', ACTION.JOIN, 0x0)
+        s.cb_handle(sessW)
+        sessW.flush()
 
         self.assertEqual(len(s.games), 1)
         self.assertEqual(len(s.matchmaking_queue), 1)
 
-        mc2.i = struct.pack('!BI', ACTION.JOIN, 0x0)
-        s.cb_handle(sess2)
-        sess2.flush()
+        mcB.i = struct.pack('!BI', ACTION.JOIN, 0x0)
+        s.cb_handle(sessB)
+        sessB.flush()
 
         self.assertEqual(len(s.games), 1)
         self.assertEqual(len(s.matchmaking_queue), 0)
 
-        expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
-        self.assertEqual(mc.o, expected)
-        self.assertEqual(mc2.o, expected)
+        _expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
+        expectedW = _expected + self.gs_white
+        expectedB = _expected + self.gs_black
+        self.assertEqual(mcW.o, expectedW)
+        self.assertEqual(mcB.o, expectedB)
 
         game = s.games[0]
         self.assertEqual(game.id, 2)
         self.assertEqual(game.host_id, 0x486)
         self.assertEqual(game.guest_id, 0x1134)
-        self.assertIs(game.host_session, sess)
-        self.assertIs(game.guest_session, sess2)
-        self.assertIs(sess.game, game)
-        self.assertIs(sess2.game, game)
+        self.assertIs(game.host_session, sessW)
+        self.assertIs(game.guest_session, sessB)
+        self.assertIs(sessW.game, game)
+        self.assertIs(sessB.game, game)
 
     def test_unauthorized_join(self):
         s = server.Server()
@@ -366,37 +425,39 @@ class TestServerJoin(unittest.TestCase):
 
     def test_rejoin(self):
         s = server.Server()
-        mc = MockConn(fd = 1)
-        sess = s.new_session(mc)
-        sess.user_id = 0x486
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
 
-        mc2 = MockConn(fd = 1)
-        sess2 = s.new_session(mc2)
-        sess2.user_id = 0x1134
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
 
         # pretend game is already ready
-        s.games.append(server.Game(sess, 2))
+        s.games.append(server.Game(sessW, 2))
         s.games[0].guest_id = 0x1134
 
-        mc.i = struct.pack('!BI', ACTION.JOIN, 0x2)
-        s.cb_handle(sess)
-        sess.flush()
+        mcW.i = struct.pack('!BI', ACTION.JOIN, 0x2)
+        s.cb_handle(sessW)
+        sessW.flush()
 
-        mc2.i = struct.pack('!BI', ACTION.JOIN, 0x2)
-        s.cb_handle(sess2)
-        sess2.flush()
+        mcB.i = struct.pack('!BI', ACTION.JOIN, 0x2)
+        s.cb_handle(sessB)
+        sessB.flush()
 
-        expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
-        self.assertEqual(mc.o, expected)
-        self.assertEqual(mc2.o, expected)
+        _expected = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
+        expectedW = _expected + self.gs_white
+        expectedB = _expected + self.gs_black
+        self.assertEqual(mcW.o, expectedW)
+        self.assertEqual(mcB.o, expectedB)
 
         game = s.games[0]
         self.assertEqual(game.id, 2)
         self.assertEqual(game.host_id, 0x486)
         self.assertEqual(game.guest_id, 0x1134)
-        self.assertIs(game.host_session, sess)
-        self.assertIs(game.guest_session, sess2)
-        self.assertIs(sess.game, game)
-        self.assertIs(sess2.game, game)
+        self.assertIs(game.host_session, sessW)
+        self.assertIs(game.guest_session, sessB)
+        self.assertIs(sessW.game, game)
+        self.assertIs(sessB.game, game)
 
 unittest.main()
