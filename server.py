@@ -247,7 +247,7 @@ class Server:
 
         # exhaust the entire input buffer
         while preamble:
-            ++bytes_read
+            bytes_read += 1
             action = preamble[0]
 
             try: handler = Server.handlers[ACTION(action)]
