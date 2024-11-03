@@ -460,4 +460,66 @@ class TestServerJoin(unittest.TestCase):
         self.assertIs(sessW.game, game)
         self.assertIs(sessB.game, game)
 
+class TestClientJoin(unittest.TestCase):
+    bs = BoardState()
+    bsp = bs.pack()
+
+    def test_invalid(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.JoinAction(c.max_protocol, 2))
+        c.flush()
+
+        sock.i = ResponsePreamble(ACTION.JOIN, STATUS.INVALID).pack()
+        try: c.handle()
+        except client.Action.Invalid: pass
+        else: self.fail()
+
+    def test_create_private(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.JoinAction(c.max_protocol, 1))
+        c.flush()
+
+        sock.i = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
+        sock.i += 0b10000001.to_bytes() + self.bsp
+        c.handle()
+
+        self.assertEqual(c.game['id'], 2)
+        self.assertEqual(c.game['color'], COLOR.WHITE)
+        self.assertEqual(c.game['can_move'], False)
+        self.assertEqual(c.game['turn'], 1)
+        self.assertEqual(c.game['boardstate'].state, self.bs.state)
+
+    def test_join_private(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.JoinAction(c.max_protocol, 2))
+        c.flush()
+
+        sock.i = ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', 2)
+        sock.i += 0b01000001.to_bytes() + self.bsp
+        c.handle()
+
+        self.assertEqual(c.game['id'], 2)
+        self.assertEqual(c.game['color'], COLOR.BLACK)
+        self.assertEqual(c.game['can_move'], True)
+        self.assertEqual(c.game['turn'], 1)
+        self.assertEqual(c.game['boardstate'].state, self.bs.state)
+
+    def test_unauthorized(self):
+        c = client.Client()
+        sock = c.sock = MockConn(1)
+
+        c.send_action(client.JoinAction(c.max_protocol, 2))
+        c.flush()
+
+        sock.i = ResponsePreamble(ACTION.JOIN, STATUS.UNAUTHORIZED).pack()
+        try: c.handle()
+        except client.Action.Unauthorized: pass
+        else: self.fail()
+
 unittest.main()

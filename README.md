@@ -176,6 +176,8 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
 #### response
   - status UNAUTHORIZED if game is ready and user isn't one of the players  
 *OR*
+  - status INVALID if game does not exist  
+*OR*
   - game id
   - complete game state
 
