@@ -25,15 +25,15 @@ class Game:
     def join(self, session: 'Session') -> bool:
         id = session.user_id
         if id == self.host_id:
-            sys.stderr.write('host session {session} rejoined game {game}\n')
+            sys.stderr.write(f'host session {session} rejoined game {self}\n')
             self.host_session = session
         elif self.guest_id == -1:
-            sys.stderr.write('guest {session} joined, readied unready game {game}\n')
+            sys.stderr.write(f'guest {session} joined, readied unready game {self}\n')
             self.guest_id = id
             self.guest_session = session
             self.start()
         elif id == self.guest_id:
-            sys.stderr.write('guest session {session} rejoined game {game}\n')
+            sys.stderr.write(f'guest session {session} rejoined game {self}\n')
             self.guest_session = session
         else:
             return False # unauthorized user
