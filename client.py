@@ -6,12 +6,12 @@ import sys
 from collections import deque
 from shared import *
 
-
-# interface
 class Action:
     class Unready(Exception): pass
     class BadStatus(Exception): pass
     class Ignore(Exception): pass # parse_response failed, but can be safely ignored. do not call fin
+    class Unauthorized(Exception): pass
+    class Invalid(Exception): pass
 
     # ctor is non-standardized, should contain protocol version and fields to init for a request message
 
@@ -72,8 +72,59 @@ class HelloAction(Action):
         client.user_id = self.user_id
         sys.stderr.write(f'new session established. user {self.user_id} protocol {self.protocol}\n')
 
+class JoinAction(Action):
+    type = ACTION.JOIN
+
+    def __init__(self, protocol_version:int, game_id:int):
+        self.protocol = protocol_version
+        self.game_id = game_id
+        self.ready = False
+
+    def serialize(self):
+        return struct.pack('!BI', ACTION.JOIN, self.game_id)
+
+    def len(self, status):
+        if status == STATUS.OK: return 21
+        else: return 0
+
+    def parse_response(self, status: STATUS|int, message: bytes):
+        if status != STATUS.OK:
+            if status == STATUS.UNAUTHORIZED:
+                raise Action.Unauthorized('Server reports user is not permitted to join this game.')
+            if status == STATUS.INVALID:
+                raise Action.Invalid('Server reports game does not exist.')
+            else:
+                if type(status) == STATUS: raise Action.BadStatus(status.name)
+                else: raise Action.BadStatus(status)
+
+        self.game_id = struct.unpack('!I', message[:4])[0]
+
+        state = message[4]
+        self.color = COLOR.WHITE if state & 128 else COLOR.BLACK
+        self.can_move = True if state & 64 else False
+        self.turn = state & 0b00111111
+
+        self.boardstate = BoardState.unpack(message[5:])
+
+        self.ready = True
+
+    def finish(self, client: 'Client'):
+        if not self.ready: raise Action.Unready
+        client.game['id'] = self.game_id
+        client.game['color'] = self.color
+        client.game['turn'] = self.turn
+        client.game['can_move'] = self.can_move
+        client.game['boardstate'] = self.boardstate
+        sys.stderr.write(f'user {client.user_id} joined game {self.game_id}\n')
+        sys.stdout.write(f'{self.boardstate}\n')
+        if self.color == COLOR.WHITE:
+            print('Matchmaking in progress. Once found, your opponent will make the first move.')
+            opponent = COLOR.BLACK.name
+        else: opponent = COLOR.WHITE.name
+        sys.stdout.write(f'you are playing {self.color.name},')
+        sys.stdout.write(f' it is {'your' if self.can_move else opponent + "'s"} turn to move\n')
+
 class BadMessage(Exception): ...
-class Invalid(Exception): ...
 
 class Client:
     min_protocol = 0
@@ -88,6 +139,14 @@ class Client:
         self.writebuffer = bytes()
         for action in ACTION:
             self.waiting_actions[action] = deque()
+        self.game = {
+            'id': -1,
+            'color': None,
+            'turn': -1,
+            'can_move': False,
+            'boardstate': None,
+        }
+
 
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
@@ -98,7 +157,8 @@ class Client:
         self.sock.setblocking(False)
         self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
 
-        self.send_action(HelloAction(self.max_protocol, 0x0486))
+        self.send_action(HelloAction(self.max_protocol, self.sock.getsockname()[1]))
+        self.send_action(JoinAction(self.protocol_version, 0))
 
         while True:
 

@@ -15,6 +15,7 @@ class Game:
         self.host_session: Session = creator
         self.guest_session: Session = None
         self.turn: int = 1
+        self.board_state = BoardState()
 
     def __repr__(self):
         return f'<id:{self.id},turn:{self.turn},host:{self.host_id},guest:{self.guest_id}>'
@@ -42,6 +43,22 @@ class Game:
     def start(self):
         print('game started', self, file=sys.stderr)
         # TODO
+
+    def push_gamestate(self, player_id: int) -> bytes:
+        message = bytearray(17)
+
+        if player_id == self.guest_id: # BLACK
+            state = 0
+            can_move = self.turn % 2
+        else: # WHITE
+            state = 128
+            can_move = (self.turn + 1) % 2
+        state |= can_move << 6
+        state |= self.turn # assumes turn shall never exceed 63
+        message[0] = state
+        message[1:] = self.board_state.pack()
+
+        return bytes(message)
 
 class Session:
     def __init__(self, sock):
@@ -142,7 +159,10 @@ class JoinHandler(Handler):
                     return ResponsePreamble(ACTION.JOIN, STATUS.INVALID).pack()
 
         session.game = game
-        return ResponsePreamble(ACTION.JOIN).pack() + struct.pack('!I', game.id)
+
+        preamble = ResponsePreamble(ACTION.JOIN).pack()
+        body = struct.pack('!I', game.id)
+        return preamble + body + game.push_gamestate(session.user_id)
 
 class Server:
     handlers = {
@@ -227,7 +247,7 @@ class Server:
 
         # exhaust the entire input buffer
         while preamble:
-            ++bytes_read
+            bytes_read += 1
             action = preamble[0]
 
             try: handler = Server.handlers[ACTION(action)]
