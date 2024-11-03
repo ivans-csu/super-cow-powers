@@ -80,6 +80,8 @@ class BoardState:
             self.state[3][3] = self.state[4][4] = SQUARE.WHITE
             self.state[3][4] = self.state[4][3] = SQUARE.BLACK
 
+    def __getitem__(self, key): return self.state[key]
+
     def __repr__(self):
         #output = bytearray(9 * (2 + 8 * 2)) - 9 rows(label,8 squares(value,separator))
         output = bytearray(162)

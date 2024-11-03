@@ -122,7 +122,7 @@ class JoinAction(Action):
             opponent = COLOR.BLACK.name
         else: opponent = COLOR.WHITE.name
         sys.stdout.write(f'you are playing {self.color.name},')
-        sys.stdout.write(f' it is {'your' if self.can_move else opponent + "'s"} turn to move\n')
+        sys.stdout.write(f' it is {"your" if self.can_move else opponent + "\'s"} turn to move\n')
 
 class BadMessage(Exception): ...
 

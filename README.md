@@ -186,6 +186,9 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
 
 #### request
   - coordinate to place a piece on
+    - coordinates shall be an unsigned quantity from 0 &ndash; 7
+    - X coordinates 0 &ndash; 7 correspond to (rightwards) game coordinates A &ndash; H
+    - Y coordinates 0 &ndash; 7 correspond to (downwards) game coordinates 1 &ndash; 8
 
 #### response
   - complete GAMESTATE  

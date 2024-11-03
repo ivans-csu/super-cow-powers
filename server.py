@@ -8,6 +8,10 @@ from collections import deque
 from shared import *
 
 class Game:
+    class IllegalMove(Exception): pass
+    class InvalidMove(Exception): pass
+    class Unauthorized(Exception): pass
+
     def __init__(self, creator: 'Session', game_id: int):
         self.id: int = game_id
         self.host_id: int = creator.user_id
@@ -38,6 +42,24 @@ class Game:
         else:
             return False # unauthorized user
         return True
+
+    # place a piece at coord for player
+    def move(self, player_id: int, moveX: int, moveY: int):
+        if moveX > 7 or moveY > 7: raise Game.IllegalMove
+
+        if player_id == self.guest_id:
+            if not self.turn % 2:
+                raise Game.InvalidMove
+            color = COLOR.BLACK
+        elif player_id == self.host_id:
+            if self.turn % 2:
+                raise Game.InvalidMove
+            color = COLOR.WHITE
+        else:
+            raise Game.Unauthorized
+
+        self.board_state[moveY][moveX] = color
+        self.turn += 1
 
     # notify the game creator of the started match
     def start(self):
@@ -85,6 +107,8 @@ class Session:
             self.write_buf = self.write_buf[sent:]
         except BlockingIOError:
             return
+
+# HANDLERS =============================================================================================================
 
 # Handler interface
 class Handler:
@@ -164,10 +188,49 @@ class JoinHandler(Handler):
         body = struct.pack('!I', game.id)
         return preamble + body + game.push_gamestate(session.user_id)
 
+class MoveHandler(Handler):
+    @staticmethod
+    def len(protocol_version) -> int: return 1
+
+    @staticmethod
+    def handle(server: 'Server', session: Session, message: bytes) -> bytes:
+        msg = message[0]
+
+        moveY = msg & 15
+        msg >>= 4
+        moveX = msg & 15
+
+        plr = session.user_id
+        game = session.game
+        try: game.move(plr, moveX, moveY)
+        except Game.IllegalMove:
+            status = STATUS.ILLEGAL
+        except Game.InvalidMove: # it's not their turn
+            status = STATUS.INVALID
+        except Game.Unauthorized: # if this happens, JOIN is broken
+            raise Game.Unauthorized('FATAL: Somehow, a session got assigned a game which they aren\'t part of')
+        else:
+            status = STATUS.OK
+
+            if session.user_id == game.guest_id:
+                opp_id = game.host_id
+                opp = game.host_session
+            else:
+                opp_id = game.guest_id
+                opp = game.guest_session
+
+            # push gamestate to opponent when we move
+            opp.send(PushPreamble(PUSH.GAMESTATE).pack() + game.push_gamestate(opp_id))
+
+        return ResponsePreamble(ACTION.MOVE, status).pack() + game.push_gamestate(plr)
+
+# MAIN SERVER CLASS ====================================================================================================
+
 class Server:
     handlers = {
         ACTION.HELLO: HelloHandler,
         ACTION.JOIN: JoinHandler,
+        ACTION.MOVE: MoveHandler,
     }
 
     min_version = 0

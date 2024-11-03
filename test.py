@@ -522,4 +522,97 @@ class TestClientJoin(unittest.TestCase):
         except client.Action.Unauthorized: pass
         else: self.fail()
 
+class TestServerMove(unittest.TestCase):
+    # white cannot move on an odd turn (also before the game has started)
+    def test_move_invalid(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        game = s.new_game(sessW)
+        sessW.game = game
+
+        mcW.i = ACTION.MOVE.to_bytes() + b'\x32' # move to D,3
+        s.cb_handle(sessW)
+        sessW.flush()
+
+        bs = BoardState()
+        iswhite = 1 << 7
+        canmove = 0 << 6
+        turn = 1
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedW = ResponsePreamble(ACTION.MOVE, STATUS.INVALID).pack() + state + bs.pack()
+        self.assertEqual(mcW.o, expectedW)
+
+    def test_move_illegal(self):
+        # out-of-bounds moves are illegal
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        game = s.new_game(sessW)
+        game.guest_id = sessB.user_id
+        sessB.game = sessW.game = game
+
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x88' # move to (OOB) I,9
+        s.cb_handle(sessB)
+        sessB.flush()
+
+        bs = BoardState()
+        iswhite = 0 << 7
+        canmove = 1 << 6
+        turn = 1
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedB = ResponsePreamble(ACTION.MOVE, STATUS.ILLEGAL).pack() + state + bs.pack()
+
+        self.assertEqual(mcB.o, expectedB)
+
+
+    def test_move_valid(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        game = s.new_game(sessW)
+        game.guest_id = sessB.user_id
+        sessB.game = sessW.game = game
+
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x32' # move to D,3
+        s.cb_handle(sessB)
+        sessB.flush()
+        sessW.flush()
+
+        bs = BoardState()
+        bs[2][3] = COLOR.BLACK
+
+        # verify move response to black
+        iswhite = 0 << 7
+        canmove = 0 << 6
+        turn = 2
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedB = ResponsePreamble(ACTION.MOVE).pack() + state + bs.pack()
+        self.assertEqual(mcB.o, expectedB)
+
+        # verify state push to white
+        iswhite = 1 << 7
+        canmove = 1 << 6
+        turn = 2
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedW = PushPreamble(PUSH.GAMESTATE).pack() + state + bs.pack()
+        self.assertEqual(mcW.o, expectedW)
+
 unittest.main()
