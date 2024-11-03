@@ -82,6 +82,10 @@ class BoardState:
 
     def __getitem__(self, key): return self.state[key]
 
+    def __eq__(self, other):
+        assert isinstance(other, BoardState)
+        return self.state == other.state
+
     def __repr__(self):
         #output = bytearray(9 * (2 + 8 * 2)) - 9 rows(label,8 squares(value,separator))
         output = bytearray(162)
@@ -123,3 +127,41 @@ class BoardState:
                 output[octet] = pack
                 octet += 1
         return bytes(output)
+
+class GameState:
+    def __init__(self,
+            color: COLOR = COLOR.BLACK,
+            can_move: bool = False,
+            turn: int = 1,
+            board_state: BoardState = BoardState()
+    ):
+        self.color = color
+        self.can_move = can_move
+        self.turn = turn
+        self.board_state = board_state
+
+    @staticmethod
+    def unpack_header(msg: bytes) -> Self:
+        color = COLOR.WHITE if msg[0] & 0b10000000 else COLOR.BLACK
+        can_move = 0 != msg[0] & 0b01000000
+        turn = msg[0] & 0b00111111
+        return GameState(color, can_move, turn, None)
+
+    @staticmethod
+    def unpack(msg: bytes) -> Self:
+        gs = GameState.unpack_header(msg)
+        bs = BoardState.unpack(msg[1:])
+        gs.board_state = bs
+        return gs
+
+    def pack_header(self) -> bytes:
+        state = 0
+        if self.color == COLOR.WHITE:
+            state |= 0b10000000
+        if self.can_move:
+            state |= 0b01000000
+        state |= 0b001111111 & self.turn
+        return state.to_bytes()
+
+    def pack(self) -> bytes:
+        return self.pack_header() + self.board_state.pack()

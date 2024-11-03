@@ -98,26 +98,16 @@ class JoinAction(Action):
                 else: raise Action.BadStatus(status)
 
         self.game_id = struct.unpack('!I', message[:4])[0]
-
-        state = message[4]
-        self.color = COLOR.WHITE if state & 128 else COLOR.BLACK
-        self.can_move = True if state & 64 else False
-        self.turn = state & 0b00111111
-
-        self.boardstate = BoardState.unpack(message[5:])
-
+        self.game_state = GameState.unpack(message[4:])
         self.ready = True
 
     def finish(self, client: 'Client'):
         if not self.ready: raise Action.Unready
-        client.game['id'] = self.game_id
-        client.game['color'] = self.color
-        client.game['turn'] = self.turn
-        client.game['can_move'] = self.can_move
-        client.game['boardstate'] = self.boardstate
+        client.game_id = self.game_id
+        client.game_state = self.game_state
         sys.stderr.write(f'user {client.user_id} joined game {self.game_id}\n')
-        sys.stdout.write(f'{self.boardstate}\n')
-        if self.color == COLOR.WHITE:
+        sys.stdout.write(f'{self.game_state.board_state}\n')
+        if self.game_state.color == COLOR.WHITE:
             print('Matchmaking in progress. Once found, your opponent will make the first move.')
             opponent = COLOR.BLACK.name
         else: opponent = COLOR.WHITE.name
@@ -139,13 +129,8 @@ class Client:
         self.writebuffer = bytes()
         for action in ACTION:
             self.waiting_actions[action] = deque()
-        self.game = {
-            'id': -1,
-            'color': None,
-            'turn': -1,
-            'can_move': False,
-            'boardstate': None,
-        }
+        self.game_id = -1
+        self.game_state = GameState(color=None, turn=-1, can_move=False, board_state=None)
 
 
     # MAIN LOOP

@@ -487,11 +487,11 @@ class TestClientJoin(unittest.TestCase):
         sock.i += 0b10000001.to_bytes() + self.bsp
         c.handle()
 
-        self.assertEqual(c.game['id'], 2)
-        self.assertEqual(c.game['color'], COLOR.WHITE)
-        self.assertEqual(c.game['can_move'], False)
-        self.assertEqual(c.game['turn'], 1)
-        self.assertEqual(c.game['boardstate'].state, self.bs.state)
+        self.assertEqual(c.game_id, 2)
+        self.assertEqual(c.game_state.color, COLOR.WHITE)
+        self.assertEqual(c.game_state.can_move, False)
+        self.assertEqual(c.game_state.turn, 1)
+        self.assertEqual(c.game_state.board_state, self.bs)
 
     def test_join_private(self):
         c = client.Client()
@@ -504,11 +504,11 @@ class TestClientJoin(unittest.TestCase):
         sock.i += 0b01000001.to_bytes() + self.bsp
         c.handle()
 
-        self.assertEqual(c.game['id'], 2)
-        self.assertEqual(c.game['color'], COLOR.BLACK)
-        self.assertEqual(c.game['can_move'], True)
-        self.assertEqual(c.game['turn'], 1)
-        self.assertEqual(c.game['boardstate'].state, self.bs.state)
+        self.assertEqual(c.game_id, 2)
+        self.assertEqual(c.game_state.color, COLOR.BLACK)
+        self.assertEqual(c.game_state.can_move, True)
+        self.assertEqual(c.game_state.turn, 1)
+        self.assertEqual(c.game_state.board_state, self.bs)
 
     def test_unauthorized(self):
         c = client.Client()
