@@ -105,14 +105,11 @@ class JoinAction(Action):
         if not self.ready: raise Action.Unready
         client.game_id = self.game_id
         client.game_state = self.game_state
+
         sys.stderr.write(f'user {client.user_id} joined game {self.game_id}\n')
-        sys.stdout.write(f'{self.game_state.board_state}\n')
+        sys.stdout.write(f'{self.game_state}\n')
         if self.game_state.color == COLOR.WHITE:
             print('Matchmaking in progress. Once found, your opponent will make the first move.')
-            opponent = COLOR.BLACK.name
-        else: opponent = COLOR.WHITE.name
-        sys.stdout.write(f'you are playing {self.color.name},')
-        sys.stdout.write(f' it is {"your" if self.can_move else opponent + "\'s"} turn to move\n')
 
 class BadMessage(Exception): ...
 
@@ -131,7 +128,6 @@ class Client:
             self.waiting_actions[action] = deque()
         self.game_id = -1
         self.game_state = GameState(color=None, turn=-1, can_move=False, board_state=None)
-
 
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):

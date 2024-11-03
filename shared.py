@@ -140,6 +140,12 @@ class GameState:
         self.turn = turn
         self.board_state = board_state
 
+    def __repr__(self):
+        repr = self.board_state.__repr__()
+        if self.can_move: move = self.color
+        else: move = COLOR((self.color + 1) % 2)
+        return f'\n{self.board_state}\nyou are playing: {self.color.name}, color to move: {move.name}, turn: {self.turn}\n'
+
     @staticmethod
     def unpack_header(msg: bytes) -> Self:
         color = COLOR.WHITE if msg[0] & 0b10000000 else COLOR.BLACK
