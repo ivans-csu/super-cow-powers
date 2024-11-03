@@ -46,7 +46,7 @@ class TestPushPreamble(unittest.TestCase):
 
     def test_endian(self):
         x = PushPreamble(PUSH.GAMESTATE)
-        self.assertEqual(x.pack(), bytes((0x0, 0x2)))
+        self.assertEqual(x.pack(), bytes((0x80, 0x2)))
 
 class TestServerHello(unittest.TestCase):
     def test_ok(self):

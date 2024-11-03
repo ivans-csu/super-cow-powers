@@ -111,6 +111,36 @@ class JoinAction(Action):
         if self.game_state.color == COLOR.WHITE:
             print('Matchmaking in progress. Once found, your opponent will make the first move.')
 
+class MoveAction(Action):
+    type = ACTION.MOVE
+
+    def __init__(self, protocol: int, x: int, y: int):
+        self.ready = False
+        self.protocol = protocol
+        self.x = x
+        self.y = y
+
+    def serialize(self) -> bytes:
+        return struct.pack('BB', ACTION.MOVE, (self.x << 4) | (self.y & 15))
+
+    def len(self, status): return 17
+
+    def parse_response(self, status: STATUS|int, message: bytes):
+        self.status = status
+        self.game_state = GameState.unpack(message)
+        self.ready = True
+
+    def finish(self, client: 'Client'):
+        if not self.ready: raise Action.Unready
+        client.game_state = self.game_state
+
+        print(self.game_state.board_state)
+        match self.status:
+            case STATUS.INVALID:
+                print('SERVER REPORTS: It is not your turn to move!')
+            case STATUS.ILLEGAL:
+                print('SERVER REPORTS: Move is not legal')
+
 class BadMessage(Exception): ...
 
 class Client:
@@ -209,7 +239,15 @@ class Client:
                         # TODO: handle
 
             else: # push
-                pass
+                push_type = PushPreamble.unpack(preamble).type
+
+                if push_type == PUSH.GAMESTATE:
+                    message = self.sock.recv(17)
+                    if len(message) < 17:
+                        raise BadMessage('unexpected end of message')
+
+                    self.game_state = GameState.unpack(message)
+                    print(self.game_state)
 
             try: preamble = self.sock.recv(2)
             except BlockingIOError:

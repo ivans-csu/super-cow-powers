@@ -58,10 +58,12 @@ class PushPreamble:
     @staticmethod
     def unpack(msg: bytes) -> Self:
         msg = msg[:2]
-        return PushPreamble(struct.unpack('!H', msg)[0])
+        type = struct.unpack('!H', msg)[0]
+        type &= ~(1<<15)
+        return PushPreamble(type)
 
     def pack(self) -> bytes:
-        return struct.pack('!H', self.type)
+        return struct.pack('!H', (1 << 15) | self.type)
 
 COLOR = IntEnum('COLOR', 'BLACK WHITE')
 
