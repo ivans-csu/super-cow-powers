@@ -3,6 +3,7 @@ import selectors
 import socket
 import struct
 import sys
+import os
 from collections import deque
 from shared import *
 
@@ -98,31 +99,48 @@ class JoinAction(Action):
                 else: raise Action.BadStatus(status)
 
         self.game_id = struct.unpack('!I', message[:4])[0]
-
-        state = message[4]
-        self.color = COLOR.WHITE if state & 128 else COLOR.BLACK
-        self.can_move = True if state & 64 else False
-        self.turn = state & 0b00111111
-
-        self.boardstate = BoardState.unpack(message[5:])
-
+        self.game_state = GameState.unpack(message[4:])
         self.ready = True
 
     def finish(self, client: 'Client'):
         if not self.ready: raise Action.Unready
-        client.game['id'] = self.game_id
-        client.game['color'] = self.color
-        client.game['turn'] = self.turn
-        client.game['can_move'] = self.can_move
-        client.game['boardstate'] = self.boardstate
+        client.game_id = self.game_id
+        client.game_state = self.game_state
+
         sys.stderr.write(f'user {client.user_id} joined game {self.game_id}\n')
-        sys.stdout.write(f'{self.boardstate}\n')
-        if self.color == COLOR.WHITE:
+        sys.stdout.write(f'{self.game_state}\n')
+        if self.game_state.color == COLOR.WHITE:
             print('Matchmaking in progress. Once found, your opponent will make the first move.')
-            opponent = COLOR.BLACK.name
-        else: opponent = COLOR.WHITE.name
-        sys.stdout.write(f'you are playing {self.color.name},')
-        sys.stdout.write(f' it is {'your' if self.can_move else opponent + "'s"} turn to move\n')
+
+class MoveAction(Action):
+    type = ACTION.MOVE
+
+    def __init__(self, protocol: int, x: int, y: int):
+        self.ready = False
+        self.protocol = protocol
+        self.x = x
+        self.y = y
+
+    def serialize(self) -> bytes:
+        return struct.pack('BB', ACTION.MOVE, (self.x << 4) | (self.y & 15))
+
+    def len(self, status): return 17
+
+    def parse_response(self, status: STATUS|int, message: bytes):
+        self.status = status
+        self.game_state = GameState.unpack(message)
+        self.ready = True
+
+    def finish(self, client: 'Client'):
+        if not self.ready: raise Action.Unready
+        client.game_state = self.game_state
+
+        print(self.game_state)
+        match self.status:
+            case STATUS.INVALID:
+                print('SERVER REPORTS: It is not your turn to move!')
+            case STATUS.ILLEGAL:
+                print('SERVER REPORTS: Move is not legal')
 
 class BadMessage(Exception): ...
 
@@ -139,14 +157,53 @@ class Client:
         self.writebuffer = bytes()
         for action in ACTION:
             self.waiting_actions[action] = deque()
-        self.game = {
-            'id': -1,
-            'color': None,
-            'turn': -1,
-            'can_move': False,
-            'boardstate': None,
-        }
+        self.game_id = -1
+        self.game_state = GameState(color=None, turn=-1, can_move=False, board_state=None)
 
+
+    def cb_stdin(self, _):
+        i = os.read(1, 128)
+        i = i[:-1]
+
+        x = i[0]
+        y = i[1]
+
+        if len(i) != 2: bad = True
+        else:
+            bad = False
+
+            if (x < 0x41):
+                bad = True
+            elif (x > 0x5A):
+                if 0x61 <= x <= 0x7A:
+                    x -= 0x20
+                else:
+                    bad = True
+            if not (0x30 <= y <= 0x39):
+                bad = True
+
+        if (bad):
+            print(f'invalid input: "{i.decode()}".\nspecify move with two characters; EG: A1')
+            return
+
+        x = x - 0x41
+        y = i[1] - 0x31
+
+        self.send_action(MoveAction(self.protocol_version, x, y))
+
+    def cb_handle(self, mask):
+        if mask & selectors.EVENT_READ:
+            try: self.handle()
+            except ConnectionError as e:
+                sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                self.disconnect()
+                exit(1)
+        if mask & selectors.EVENT_WRITE:
+            try: self.flush()
+            except ConnectionError as e:
+                sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                self.disconnect()
+                exit(1)
 
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
@@ -155,7 +212,8 @@ class Client:
         self.sock.connect((address, port))
         sys.stderr.write(f'connected to {self.sock.getpeername()}\n')
         self.sock.setblocking(False)
-        self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
+        self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=self.cb_handle)
+        self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
 
         self.send_action(HelloAction(self.max_protocol, self.sock.getsockname()[1]))
         self.send_action(JoinAction(self.protocol_version, 0))
@@ -165,19 +223,8 @@ class Client:
             # interactive client code should be called from here
 
             events = self.sel.select()
-            for _, mask in events:
-                if mask & selectors.EVENT_READ:
-                    try: self.handle()
-                    except ConnectionError as e:
-                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
-                        self.disconnect()
-                        exit(1)
-                if mask & selectors.EVENT_WRITE:
-                    try: self.flush()
-                    except ConnectionError as e:
-                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
-                        self.disconnect()
-                        exit(1)
+            for key, mask in events:
+                key.data(mask)
 
     def handle(self):
         try:
@@ -228,7 +275,15 @@ class Client:
                         # TODO: handle
 
             else: # push
-                pass
+                push_type = PushPreamble.unpack(preamble).type
+
+                if push_type == PUSH.GAMESTATE:
+                    message = self.sock.recv(17)
+                    if len(message) < 17:
+                        raise BadMessage('unexpected end of message')
+
+                    self.game_state = GameState.unpack(message)
+                    print(self.game_state)
 
             try: preamble = self.sock.recv(2)
             except BlockingIOError:
