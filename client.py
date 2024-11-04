@@ -164,11 +164,29 @@ class Client:
     def cb_stdin(self, _):
         i = os.read(1, 128)
         i = i[:-1]
-        if (len(i) != 2):
-            print(f'invalid input: "{i}".\nspecify move with two characters; EG: A1')
+
+        x = i[0]
+        y = i[1]
+
+        if len(i) != 2: bad = True
+        else:
+            bad = False
+
+            if (x < 0x41):
+                bad = True
+            elif (x > 0x5A):
+                if 0x61 <= x <= 0x7A:
+                    x -= 0x20
+                else:
+                    bad = True
+            if not (0x30 <= y <= 0x39):
+                bad = True
+
+        if (bad):
+            print(f'invalid input: "{i.decode()}".\nspecify move with two characters; EG: A1')
             return
 
-        x = i[0] - 0x41
+        x = x - 0x41
         y = i[1] - 0x31
 
         self.send_action(MoveAction(self.protocol_version, x, y))
