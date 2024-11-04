@@ -135,7 +135,7 @@ class MoveAction(Action):
         if not self.ready: raise Action.Unready
         client.game_state = self.game_state
 
-        print(self.game_state.board_state)
+        print(self.game_state)
         match self.status:
             case STATUS.INVALID:
                 print('SERVER REPORTS: It is not your turn to move!')

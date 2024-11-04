@@ -145,7 +145,7 @@ class GameState:
     def __repr__(self):
         repr = self.board_state.__repr__()
         if self.can_move: move = self.color
-        else: move = COLOR((self.color + 1) % 2)
+        else: move = COLOR.BLACK if self.color == COLOR.WHITE else COLOR.WHITE
         return f'\n{self.board_state}\nyou are playing: {self.color.name}, color to move: {move.name}, turn: {self.turn}\n'
 
     @staticmethod
