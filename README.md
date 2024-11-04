@@ -2,10 +2,21 @@
 
 This is a simple Othello/Reversi game implemented using Python and sockets.
 
+**State of Implementation:**
+- The entire v0 protocol as described in this document is implemented as described in the specification EXCEPT for state pushes:
+    - CONNECT
+    - DCONNECT
+- No rules enforcement other than turn order and coordinate bounds are implemented
+- Clients connect to the server at startup
+- Clients immediately join matchmaking at startup
+  - If your terminal hangs up, there is no user-facing way to reconnect to a game.  This is a UI limitation, the protocol for this is implemented
+- Player is able to enter moves, and both clients will display the game state as it changes
+
 **How to play:**
 1. **Start the server:** Run `python server.py <listen IP address> <port>`
-2. **Connect clients:** Run `python client.py <server IP address> <port>`.
+2. **Connect clients:** Run `python client.py <server IP address> <port>` once for each client (each on their own terminal).
 3. **Play the game:** Players take turns entering their moves. When all squares contain pieces, the player with the most pieces on the board wins.
+    - Use the format 'A1' to place a piece at that game coordinate
 
 **Technologies used:**
 * Python
