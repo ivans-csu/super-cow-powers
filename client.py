@@ -3,6 +3,7 @@ import selectors
 import socket
 import struct
 import sys
+import os
 from collections import deque
 from shared import *
 
@@ -159,6 +160,33 @@ class Client:
         self.game_id = -1
         self.game_state = GameState(color=None, turn=-1, can_move=False, board_state=None)
 
+
+    def cb_stdin(self, _):
+        i = os.read(1, 128)
+        i = i[:-1]
+        if (len(i) != 2):
+            print(f'invalid input: "{i}".\nspecify move with two characters; EG: A1')
+            return
+
+        x = i[0] - 0x41
+        y = i[1] - 0x31
+
+        self.send_action(MoveAction(self.protocol_version, x, y))
+
+    def cb_handle(self, mask):
+        if mask & selectors.EVENT_READ:
+            try: self.handle()
+            except ConnectionError as e:
+                sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                self.disconnect()
+                exit(1)
+        if mask & selectors.EVENT_WRITE:
+            try: self.flush()
+            except ConnectionError as e:
+                sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                self.disconnect()
+                exit(1)
+
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -166,7 +194,8 @@ class Client:
         self.sock.connect((address, port))
         sys.stderr.write(f'connected to {self.sock.getpeername()}\n')
         self.sock.setblocking(False)
-        self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE)
+        self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=self.cb_handle)
+        self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
 
         self.send_action(HelloAction(self.max_protocol, self.sock.getsockname()[1]))
         self.send_action(JoinAction(self.protocol_version, 0))
@@ -176,19 +205,8 @@ class Client:
             # interactive client code should be called from here
 
             events = self.sel.select()
-            for _, mask in events:
-                if mask & selectors.EVENT_READ:
-                    try: self.handle()
-                    except ConnectionError as e:
-                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
-                        self.disconnect()
-                        exit(1)
-                if mask & selectors.EVENT_WRITE:
-                    try: self.flush()
-                    except ConnectionError as e:
-                        sys.stderr.write(f'CONNECTION ERROR: {e}\n')
-                        self.disconnect()
-                        exit(1)
+            for key, mask in events:
+                key.data(mask)
 
     def handle(self):
         try:
