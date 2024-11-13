@@ -1,9 +1,10 @@
+import argparse
 import atexit
+import os
 import selectors
 import socket
 import struct
 import sys
-import os
 from collections import deque
 from shared import *
 
@@ -207,6 +208,8 @@ class Client:
 
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
+        atexit.register(self.stop)
+
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         self.sock.connect((address, port))
@@ -310,18 +313,21 @@ class Client:
 if __name__ == '__main__':
     client = Client()
 
-    atexit.register(client.stop)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-i', '--ip',
+        help='specify the ip address of the server',
+        default='localhost',
+    )
+    parser.add_argument(
+        '-p', '--port',
+        help='specify the port of the server',
+        type=int,
+        default=9999,
+    )
+    args = parser.parse_args()
 
-    try:
-        argc = len(sys.argv)
-        if argc == 1:
-            client.start()
-        elif argc == 3:
-            client.start(sys.argv[1], int(sys.argv[2]))
-        else:
-            sys.stderr.write('usage: client.py <server address> <server port>\n')
-            exit(1)
-
+    try: client.start(args.ip, args.port)
     except KeyboardInterrupt:
         sys.stderr.write('killed by KeyboardInterrupt\n')
         exit(0)

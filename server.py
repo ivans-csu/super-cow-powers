@@ -1,3 +1,4 @@
+import argparse
 import atexit
 import selectors
 import socket
@@ -249,10 +250,12 @@ class Server:
         return session
 
     # main loop for listening as a TCP server.  blocks.
-    def start(self, address = '', port = 9999):
+    def start(self, port = 9999):
+        atexit.register(self.stop)
+
         self.main_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.main_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.main_sock.bind((address, port))
+        self.main_sock.bind(('0.0.0.0', port))
         self.main_sock.setblocking(False)
         self.main_sock.listen()
         self.sel.register(self.main_sock, selectors.EVENT_READ, self.cb_connect)
@@ -356,18 +359,16 @@ class Server:
 if __name__ == '__main__':
     server = Server()
 
-    atexit.register(server.stop)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-p', '--port',
+        help='specify the port to host the server on',
+        type=int,
+        default=9999,
+    )
+    args = parser.parse_args()
 
-    try:
-        argc = len(sys.argv)
-        if argc == 1:
-            server.start()
-        elif argc == 3:
-            server.start(sys.argv[1], int(sys.argv[2]))
-        else:
-            print('usage: server.py <listen address> <listen port>', file=sys.stderr)
-            exit(1)
-
+    try: server.start(port=args.port)
     except KeyboardInterrupt:
         sys.stderr.write('killed by KeyboardInterrupt\n')
         exit(0)
