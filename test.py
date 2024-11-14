@@ -615,4 +615,117 @@ class TestServerMove(unittest.TestCase):
         expectedW = PushPreamble(PUSH.GAMESTATE).pack() + state + bs.pack()
         self.assertEqual(mcW.o, expectedW)
 
+class TestServerDConnPush(unittest.TestCase):
+    def test_dconn_solo(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        g = s.new_game(sessW)
+        self.assertEqual(g.host_session, sessW)
+        self.assertEqual(g.host_id, sessW.user_id)
+
+        g.disconnect(sessW)
+        self.assertEqual(g.host_session, None)
+        self.assertEqual(g.host_id, sessW.user_id)
+        sessW.flush()
+        self.assertFalse(mcW.o)
+
+    def test_dconn_host(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        g = s.new_game(sessW)
+        g.join(sessB)
+        self.assertEqual(g.host_session, sessW)
+        self.assertEqual(g.guest_session, sessB)
+
+        g.disconnect(sessW)
+        self.assertEqual(g.host_session, None)
+        self.assertEqual(g.guest_session, sessB)
+        sessB.flush()
+        self.assertEqual(mcB.o, PushPreamble(PUSH.DCONNECT).pack())
+
+        g.join(sessW)
+        self.assertEqual(g.host_session, sessW)
+        g.disconnect(sessW)
+        self.assertEqual(g.host_session, None)
+        sessB.flush()
+        self.assertEqual(mcB.o, 2 * PushPreamble(PUSH.DCONNECT).pack())
+
+    def test_dconn_guest(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        g = s.new_game(sessW)
+        g.join(sessB)
+        self.assertEqual(g.host_session, sessW)
+        self.assertEqual(g.guest_session, sessB)
+
+        g.disconnect(sessB)
+        self.assertEqual(g.host_session, sessW)
+        self.assertEqual(g.guest_session, None)
+        sessW.flush()
+        self.assertEqual(mcW.o, PushPreamble(PUSH.DCONNECT).pack())
+
+        g.join(sessB)
+        self.assertEqual(g.guest_session, sessB)
+        g.disconnect(sessB)
+        self.assertEqual(g.guest_session, None)
+        sessW.flush()
+        self.assertEqual(mcW.o, 2 * PushPreamble(PUSH.DCONNECT).pack())
+
+    def test_dconn_both(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        g = s.new_game(sessW)
+        g.join(sessB)
+        self.assertEqual(g.host_session, sessW)
+        self.assertEqual(g.guest_session, sessB)
+
+        g.disconnect(sessB)
+        self.assertEqual(g.host_session, sessW)
+        self.assertEqual(g.guest_session, None)
+        sessW.flush()
+        sessB.flush()
+        self.assertEqual(mcW.o, PushPreamble(PUSH.DCONNECT).pack())
+        self.assertFalse(mcB.o)
+
+        g.join(sessB)
+        sessW.write_buf = mcW.o = b'' # suppress JOIN
+        self.assertEqual(g.host_session, sessW)
+        self.assertEqual(g.guest_session, sessB)
+
+        g.disconnect(sessW)
+        self.assertEqual(g.host_session, None)
+        self.assertEqual(g.guest_session, sessB)
+        sessW.flush()
+        sessB.flush()
+        self.assertFalse(mcW.o)
+        self.assertEqual(mcB.o, PushPreamble(PUSH.DCONNECT).pack())
+
 unittest.main()
