@@ -13,8 +13,8 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
 - Player is able to enter moves, and both clients will display the game state as it changes
 
 **How to play:**
-1. **Start the server:** Run `python server.py <listen IP address> <port>`
-2. **Connect clients:** Run `python client.py <server IP address> <port>` once for each client (each on their own terminal).
+1. **Start the server:** Run `python server.py -p <listen port>`
+2. **Connect clients:** Run `python client.py -i <server IP address> -p <server port>` once for each client (each on their own terminal).
 3. **Play the game:** Players take turns entering their moves. When all squares contain pieces, the player with the most pieces on the board wins.
     - Use the format 'A1' to place a piece at that game coordinate
 
