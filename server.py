@@ -71,7 +71,7 @@ class Game:
     def _has_legal_move(self, color):
         for y in range(8):
             for x in range(8):
-                if len(self._captures(color, x, y)) > 0:
+                if len(self._captures(color, x, y)) > 0 and self.board_state[x][y] == SQUARE.EMPTY:
                     return True
         return False
 
@@ -113,7 +113,7 @@ class Game:
                 square = self.board_state[x][y]
                 if square == COLOR.BLACK:
                     black_score += 1
-                if square == COLOR.WHITE:
+                elif square == COLOR.WHITE:
                     white_score += 1
         if black_score > white_score:
             print('game', id, 'ended, winner:', self.guest_id)
