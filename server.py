@@ -71,7 +71,7 @@ class Game:
     def _has_legal_move(self, color):
         for y in range(8):
             for x in range(8):
-                if len(self._captures(color, x, y)) > 0 and self.board_state[x][y] == SQUARE.EMPTY:
+                if self.board_state[x][y] == SQUARE.EMPTY and len(self._captures(color, x, y)) > 0:
                     return True
         return False
 
