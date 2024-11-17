@@ -287,7 +287,7 @@ class Client:
 
                     self.game_state = GameState.unpack(message)
                     print(self.game_state)
-                if push_type == PUSH.DCONNECT:
+                elif push_type == PUSH.DCONNECT:
                     print('opponent is now away')
                 else:
                     print(f'got unhandled PUSH type "{push_type}"', file=sys.stderr)
