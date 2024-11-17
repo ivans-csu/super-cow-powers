@@ -598,6 +598,7 @@ class TestServerMove(unittest.TestCase):
 
         bs = BoardState()
         bs[2][3] = COLOR.BLACK
+        bs[3][3] = COLOR.BLACK
 
         # verify move response to black
         iswhite = 0 << 7
