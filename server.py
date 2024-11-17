@@ -12,6 +12,7 @@ class Game:
     class IllegalMove(Exception): pass
     class InvalidMove(Exception): pass
     class Unauthorized(Exception): pass
+    class NoSuchPlayer(Exception): pass
 
     def __init__(self, creator: 'Session', game_id: int):
         self.id: int = game_id
@@ -43,6 +44,18 @@ class Game:
         else:
             return False # unauthorized user
         return True
+
+    def disconnect(self, session: 'Session'):
+        if session.user_id == self.host_id:
+            self.host_session = None
+            opponent = self.guest_session
+        elif session.user_id == self.guest_id:
+            self.guest_session = None
+            opponent = self.host_session
+        else: raise Game.NoSuchPlayer
+        print(f'{session} removed from game {self}.', file=sys.stderr)
+
+        if opponent: opponent.send(PushPreamble(PUSH.DCONNECT).pack())
 
     def _inbounds(self, x: int, y: int):
         return (x <= 7 and x >= 0 and y <= 7 and y >= 0)
@@ -399,11 +412,12 @@ class Server:
 
     def disconnect(self, session: Session):
         print(f'{session} hung up.', file=sys.stderr)
+        if session.game:
+            session.game.disconnect(session)
         if session.sock.fileno() in self.sessions:
             del(self.sessions[session.sock.fileno()])
         self.sel.unregister(session.sock)
         session.sock.close()
-        # TODO: remove user session from game
 
     def new_game(self, session: Session) -> Game:
         game_id = 2 + len(self.games)
