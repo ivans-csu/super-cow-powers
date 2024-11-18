@@ -272,6 +272,7 @@ class MoveHandler(Handler):
 
         plr = session.user_id
         game = session.game
+        # TODO: handle game instanceof NoneType
         try: game.move(plr, moveX, moveY)
         except Game.IllegalMove:
             status = STATUS.ILLEGAL
@@ -290,7 +291,7 @@ class MoveHandler(Handler):
                 opp = game.guest_session
 
             # push gamestate to opponent when we move
-            opp.send(PushPreamble(PUSH.GAMESTATE).pack() + game.push_gamestate(opp_id))
+            if opp: opp.send(PushPreamble(PUSH.GAMESTATE).pack() + game.push_gamestate(opp_id))
 
         return ResponsePreamble(ACTION.MOVE, status).pack() + game.push_gamestate(plr)
 
