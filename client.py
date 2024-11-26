@@ -7,6 +7,7 @@ import struct
 import sys
 from collections import deque
 from shared import *
+DEBUG = os.environ.get('DEBUG', None)
 
 class Action:
     class Unready(Exception): pass
@@ -60,7 +61,7 @@ class HelloAction(Action):
             raise self.Unsupported
         elif status == STATUS.INVALID:
             user_id = struct.unpack('!I', message)[0]
-            sys.stderr.write(f'server reported duplicate HELLO\n')
+            if DEBUG: sys.stderr.write(f'client: server reported duplicate HELLO\n')
             if user_id != self.user_id: raise self.SocketPanic('PANIC! Server reports socket already in use by another user!  This is a critical server bug!')
             else: raise Action.Ignore # don't call finish(), fail silently on duplicate HELLO for same user
         else:
@@ -72,7 +73,7 @@ class HelloAction(Action):
         if not self.ready: raise Action.Unready
         client.protocol_version = self.protocol
         client.user_id = self.user_id
-        sys.stderr.write(f'new session established. user {self.user_id} protocol {self.protocol}\n')
+        if DEBUG: sys.stderr.write(f'client: new session established. user {self.user_id} protocol {self.protocol}\n')
 
 class JoinAction(Action):
     type = ACTION.JOIN
@@ -108,7 +109,7 @@ class JoinAction(Action):
         client.game_id = self.game_id
         client.game_state = self.game_state
 
-        sys.stderr.write(f'user {client.user_id} joined game {self.game_id}\n')
+        if DEBUG: sys.stderr.write(f'client: user {client.user_id} joined game {self.game_id}\n')
         sys.stdout.write(f'{self.game_state}\n')
         if self.game_state.color == COLOR.WHITE:
             print('Matchmaking in progress. Once found, your opponent will make the first move.')
@@ -213,7 +214,7 @@ class Client:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         self.sock.connect((address, port))
-        sys.stderr.write(f'connected to {self.sock.getpeername()}\n')
+        if DEBUG: sys.stderr.write(f'client: connected to {self.sock.getpeername()}\n')
         self.sock.setblocking(False)
         self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=self.cb_handle)
         self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
@@ -290,16 +291,22 @@ class Client:
                 elif push_type == PUSH.DCONNECT:
                     print('opponent is now away')
                 else:
-                    print(f'got unhandled PUSH type "{push_type}"', file=sys.stderr)
+                    if DEBUG: print(f'client: got unhandled PUSH type "{push_type}"', file=sys.stderr)
 
             try: preamble = self.sock.recv(2)
             except BlockingIOError:
                 return
 
+    def join(self, game_id: int):
+        self.send_action(JoinAction(self.max_protocol, game_id))
+
+    def move(self, x:int, y:int):
+        self.send_action(MoveAction(self.protocol_version, x, y))
+
     def disconnect(self):
         try: sn = self.sock.getsockname()
         except: sn = self.sock.fileno()
-        sys.stderr.write(f'released {sn}\n')
+        if DEBUG: sys.stderr.write(f'client: released {sn}\n')
         self.sock.close()
 
     def send_action(self, action: Action):

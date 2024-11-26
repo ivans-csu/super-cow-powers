@@ -1,4 +1,7 @@
 import unittest
+import os
+
+os.environ['DEBUG'] = '1'
 
 import server
 import client
