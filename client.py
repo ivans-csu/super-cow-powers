@@ -7,7 +7,10 @@ import struct
 import sys
 from collections import deque
 from shared import *
+import ui
+
 DEBUG = os.environ.get('DEBUG', None)
+NOUI = os.environ.get('NOUI', None)
 
 class Action:
     class Unready(Exception): pass
@@ -110,9 +113,11 @@ class JoinAction(Action):
         client.game_state = self.game_state
 
         if DEBUG: sys.stderr.write(f'client: user {client.user_id} joined game {self.game_id}\n')
-        sys.stdout.write(f'{self.game_state}\n')
         if self.game_state.color == COLOR.WHITE:
-            print('Matchmaking in progress. Once found, your opponent will make the first move.')
+            uimessage = 'Matchmaking in progress. Once found, your opponent will make the first move.'
+        else: uimessage = ''
+
+        ui.push_event(ui.JoinEvent(self.game_state, uimessage))
 
 class MoveAction(Action):
     type = ACTION.MOVE
@@ -137,12 +142,14 @@ class MoveAction(Action):
         if not self.ready: raise Action.Unready
         client.game_state = self.game_state
 
-        print(self.game_state)
         match self.status:
             case STATUS.INVALID:
-                print('SERVER REPORTS: It is not your turn to move!')
+                uimessage = 'It is not your turn to move!'
             case STATUS.ILLEGAL:
-                print('SERVER REPORTS: Move is not legal')
+                uimessage = 'Move is not legal'
+            case _:
+                uimessage = ''
+        ui.push_event(ui.GamestateEvent(self.game_state, uimessage))
 
 class BadMessage(Exception): ...
 
@@ -167,31 +174,7 @@ class Client:
         i = os.read(1, 128)
         i = i[:-1]
 
-        x = i[0]
-        y = i[1]
-
-        if len(i) != 2: bad = True
-        else:
-            bad = False
-
-            if (x < 0x41):
-                bad = True
-            elif (x > 0x5A):
-                if 0x61 <= x <= 0x7A:
-                    x -= 0x20
-                else:
-                    bad = True
-            if not (0x30 <= y <= 0x39):
-                bad = True
-
-        if (bad):
-            print(f'invalid input: "{i.decode()}".\nspecify move with two characters; EG: A1')
-            return
-
-        x = x - 0x41
-        y = i[1] - 0x31
-
-        self.send_action(MoveAction(self.protocol_version, x, y))
+        ui.parse(self, input=i.decode())
 
     def cb_handle(self, mask):
         if mask & selectors.EVENT_READ:
@@ -217,14 +200,14 @@ class Client:
         if DEBUG: sys.stderr.write(f'client: connected to {self.sock.getpeername()}\n')
         self.sock.setblocking(False)
         self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=self.cb_handle)
-        self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
+        if not NOUI: self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
 
         self.send_action(HelloAction(self.max_protocol, self.sock.getsockname()[1]))
-        self.send_action(JoinAction(self.protocol_version, 0))
+        ui.push_event(ui.PrintEvent('welcome!'))
+        if not NOUI: ui.prompt()
 
         while True:
-
-            # interactive client code should be called from here
+            if not NOUI: ui.handle_events()
 
             events = self.sel.select()
             for key, mask in events:
@@ -287,9 +270,9 @@ class Client:
                         raise BadMessage('unexpected end of message')
 
                     self.game_state = GameState.unpack(message)
-                    print(self.game_state)
+                    ui.push_event(ui.GamestateEvent(self.game_state))
                 elif push_type == PUSH.DCONNECT:
-                    print('opponent is now away')
+                    ui.push_event(ui.PrintEvent('opponent is now away', '@'))
                 else:
                     if DEBUG: print(f'client: got unhandled PUSH type "{push_type}"', file=sys.stderr)
 
