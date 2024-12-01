@@ -61,7 +61,7 @@ class Game:
     def _inbounds(self, x: int, y: int):
         return (x <= 7 and x >= 0 and y <= 7 and y >= 0)
 
-    def _captures(self, color: int, moveX: int, moveY: int):
+    def _captures(self, color: COLOR, moveX: int, moveY: int):
         captured_squares = []
         directions = [(0, 1), (1, 0), (1, 1), (0, -1), (-1, 0), (-1, -1), (1, -1), (-1, 1)]
 
@@ -85,14 +85,14 @@ class Game:
     def _has_legal_move(self, color:COLOR):
         for y in range(8):
             for x in range(8):
-                if self.board_state[x][y] == SQUARE.EMPTY and len(self._captures(color, x, y)) > 0:
+                if self.board_state[y][x] == COLOR.EMPTY and len(self._captures(color, x, y)) > 0:
                     return True
         return False
 
     # place a piece at coord for player
     def move(self, player_id: int, moveX: int, moveY: int):
         if not self._inbounds(moveX, moveY): raise Game.IllegalMove
-        if self.board_state[moveY][moveX] != SQUARE.EMPTY: raise Game.IllegalMove
+        if self.board_state[moveY][moveX] != COLOR.EMPTY: raise Game.IllegalMove
 
         if player_id == self.guest_id:
             opponent_color = COLOR.WHITE
@@ -134,8 +134,8 @@ class Game:
                 elif square == COLOR.WHITE:
                     white_score += 1
         self.game_over = [0,0]
-        self.game_over[COLOR.BLACK] = black_score
-        self.game_over[COLOR.WHITE] = white_score
+        self.game_over[0] = black_score
+        self.game_over[1] = white_score
         if black_score > white_score:
             print('game', id, 'ended, winner:', self.guest_id)
         elif white_score > black_score:

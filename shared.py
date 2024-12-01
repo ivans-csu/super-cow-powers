@@ -65,9 +65,7 @@ class PushPreamble:
     def pack(self) -> bytes:
         return struct.pack('!H', (1 << 15) | self.type)
 
-COLOR = IntEnum('COLOR', 'BLACK WHITE')
-
-class SQUARE(IntEnum):
+class COLOR(IntEnum):
     EMPTY = 0
     BLACK = 1
     WHITE = 2
@@ -77,10 +75,10 @@ class BoardState:
     _MAP = b'-@O'
 
     def __init__(self, new=True):
-        self.state: list[list[SQUARE]] = [[SQUARE.EMPTY] * 8 for _ in range(8)]
+        self.state: list[list[COLOR]] = [[COLOR.EMPTY] * 8 for _ in range(8)]
         if new:
-            self.state[3][3] = self.state[4][4] = SQUARE.WHITE
-            self.state[3][4] = self.state[4][3] = SQUARE.BLACK
+            self.state[3][3] = self.state[4][4] = COLOR.WHITE
+            self.state[3][4] = self.state[4][3] = COLOR.BLACK
 
     def __getitem__(self, key): return self.state[key]
 
@@ -112,7 +110,7 @@ class BoardState:
             for offset in (0,4):
                 pack = message[octet]
                 for col in range(3,-1,-1):
-                    board.state[row][col + offset] = SQUARE(pack & BoardState._MASK)
+                    board.state[row][col + offset] = COLOR(pack & BoardState._MASK)
                     pack >>= 2
                 octet += 1
         return board
