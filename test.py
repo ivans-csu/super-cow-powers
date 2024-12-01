@@ -787,7 +787,7 @@ class TestServerWinLose(unittest.TestCase):
         mcW.o = b''
         mcB.o = b''
 
-        mcB.i = ACTION.MOVE.to_bytes() + b'\x70' # move to H,2
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x70' # move to H,1
         s.cb_handle(sessB)
         sessB.flush()
         sessW.flush()
@@ -814,5 +814,90 @@ class TestServerWinLose(unittest.TestCase):
         self.assertEqual(mcB.o, expectedB)
 
         self.assertEqual(g.game_over, [64, 0])
+
+    def test_tie(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = server.Session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = server.Session(mcB)
+        sessB.user_id = 0x1134
+
+        g = s.new_game(sessW)
+        g.guest_id = sessB.user_id
+        sessB.game = sessW.game = g
+        g.host_session = sessW
+        g.guest_session = sessB
+        g.turn = 3
+        #game which is almost over
+        g.board_state.state = [[COLOR.WHITE] * 8 for _ in range(4)] + [[COLOR.BLACK] * 8 for _ in range(4)]
+        g.board_state.state[0][7] = COLOR.EMPTY
+        g.board_state.state[1][7] = COLOR.EMPTY
+        g.board_state.state[3][7] = COLOR.BLACK
+        g.board_state.state[4][0] = COLOR.WHITE
+        g.board_state.state[4][7] = COLOR.WHITE
+
+        bsexpect = copy.deepcopy(g.board_state)
+        self.assertIsNot(bsexpect.state, g.board_state.state)
+
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x71' # move to H,2
+        s.cb_handle(sessB)
+        sessB.flush()
+        sessW.flush()
+
+        bsexpect[1][7] = COLOR.BLACK
+        bsexpect[2][7] = COLOR.BLACK
+        bsexpect[2][6] = COLOR.BLACK
+        bsexpect[3][5] = COLOR.BLACK
+
+        # verify move response to white
+        iswhite = 1 << 7
+        canmove = 1 << 6
+        turn = 4
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedW = PushPreamble(PUSH.GAMESTATE).pack() + state + bsexpect.pack()
+        self.assertEqual(mcW.o, expectedW)
+
+        # verify state push to black
+        iswhite = 0 << 7
+        canmove = 0 << 6
+        turn = 4
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedB = ResponsePreamble(ACTION.MOVE).pack() + state + bsexpect.pack()
+        self.assertEqual(mcB.o, expectedB)
+
+        mcW.o = b''
+        mcB.o = b''
+
+        mcW.i = ACTION.MOVE.to_bytes() + b'\x70' # move to H,1
+        s.cb_handle(sessW)
+        sessB.flush()
+        sessW.flush()
+
+        bsexpect[0][7] = COLOR.WHITE
+        bsexpect[1][7] = COLOR.WHITE
+        bsexpect[2][7] = COLOR.WHITE
+        bsexpect[3][7] = COLOR.WHITE
+
+        # verify move response to white
+        iswhite = 1 << 7
+        canmove = 0 << 6
+        turn = 5
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedW = ResponsePreamble(ACTION.MOVE).pack() + state + bsexpect.pack() + PushPreamble(PUSH.TIE).pack()
+        self.assertEqual(mcW.o, expectedW)
+
+        # verify state push to black
+        iswhite = 0 << 7
+        canmove = 0 << 6
+        turn = 5
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedB = PushPreamble(PUSH.GAMESTATE).pack() + state + bsexpect.pack() + PushPreamble(PUSH.TIE).pack()
+        self.assertEqual(mcB.o, expectedB)
+
+        self.assertEqual(g.game_over, [32, 32])
 
 unittest.main()
