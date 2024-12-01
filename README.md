@@ -236,9 +236,15 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
 
 ### 3 - WIN
   - push indicates the game is over and the receiving user has won
+  - sent immediately following a GAMESTATE if the game is over
 
 ### 4 - LOSE
   - push indicates the game is over and the receiving user has lost
+  - sent immediately following a GAMESTATE if the game is over
+
+### 5 - TIE
+  - push indicates the game is over and both players have the same score
+  - sent immediately following a GAMESTATE if the game is over
 
 ## Message Specification
 ### Client Packet Structure:
@@ -310,4 +316,7 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
   (empty)
 
 #### 4 - LOSE
+  (empty)
+
+#### 5 - TIE
   (empty)
