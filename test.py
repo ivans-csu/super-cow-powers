@@ -802,7 +802,7 @@ class TestServerWinLose(unittest.TestCase):
         canmove = 0 << 6
         turn = 4
         state = (iswhite | canmove | turn).to_bytes()
-        expectedW = PushPreamble(PUSH.GAMESTATE).pack() + state + bsexpect.pack()
+        expectedW = PushPreamble(PUSH.GAMESTATE).pack() + state + bsexpect.pack() + PushPreamble(PUSH.LOSE).pack()
         self.assertEqual(mcW.o, expectedW)
 
         # verify state push to black
@@ -810,7 +810,7 @@ class TestServerWinLose(unittest.TestCase):
         canmove = 0 << 6
         turn = 4
         state = (iswhite | canmove | turn).to_bytes()
-        expectedB = ResponsePreamble(ACTION.MOVE).pack() + state + bsexpect.pack()
+        expectedB = ResponsePreamble(ACTION.MOVE).pack() + state + bsexpect.pack() + PushPreamble(PUSH.WIN).pack()
         self.assertEqual(mcB.o, expectedB)
 
         self.assertEqual(g.game_over, [64, 0])

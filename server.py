@@ -139,11 +139,25 @@ class Game:
         self.game_over[0] = black_score
         self.game_over[1] = white_score
         if black_score > white_score:
-            print('game', self, 'ended, winner:', self.guest_id)
+            print('game', self, 'ended, winner: (BLACK)', self.guest_id)
         elif white_score > black_score:
-            print('game', self, 'ended, winner:', self.host_id)
+            print('game', self, 'ended, winner: (WHITE)', self.host_id)
         else:
             print('game', self, 'ended in a tie')
+
+    def push_gameover(self, player_id: int) -> bytes:
+        if player_id == self.guest_id: # BLACK
+            i = 0
+            opp_i = 1
+        else: # WHITE
+            i = 1
+            opp_i = 0
+        if self.game_over[i] > self.game_over[opp_i]:
+            return PushPreamble(PUSH.WIN).pack()
+        elif self.game_over[i] < self.game_over[opp_i]:
+            return PushPreamble(PUSH.LOSE).pack()
+        else:
+            return PushPreamble(PUSH.TIE).pack()
 
     def push_gamestate(self, player_id: int) -> bytes:
         message = bytearray(17)
@@ -154,8 +168,7 @@ class Game:
                 state = 128
             state |= self.turn # assumes turn shall never exceed 63
             message[0] = state
-            message[1:] = self.board_state.pack()
-            # TODO: add win/lose push
+            message[1:] = self.board_state.pack() + self.push_gameover(player_id)
             return bytes(message)
 
         if player_id == self.guest_id: # BLACK

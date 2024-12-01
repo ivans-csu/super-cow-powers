@@ -11,6 +11,9 @@ class PUSH(IntEnum):
     CONNECT = 0
     DCONNECT = 1
     GAMESTATE = 2
+    WIN = 3
+    LOSE = 4
+    TIE = 5
 
 class STATUS(IntEnum):
     OK = 0
