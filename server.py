@@ -22,6 +22,7 @@ class Game:
         self.guest_session: Session = None
         self.turn: int = 1
         self.board_state = BoardState()
+        self.game_over: list = None # initialized in self.end()
 
     def __repr__(self):
         return f'<id:{self.id},turn:{self.turn},host:{self.host_id},guest:{self.guest_id}>'
@@ -60,7 +61,7 @@ class Game:
     def _inbounds(self, x: int, y: int):
         return (x <= 7 and x >= 0 and y <= 7 and y >= 0)
 
-    def _captures(self, color: int, moveX: int, moveY: int):
+    def _captures(self, color: COLOR, moveX: int, moveY: int):
         captured_squares = []
         directions = [(0, 1), (1, 0), (1, 1), (0, -1), (-1, 0), (-1, -1), (1, -1), (-1, 1)]
 
@@ -81,26 +82,28 @@ class Game:
                 captured_squares.extend(direction_captures)
         return captured_squares
 
-    def _has_legal_move(self, color):
+    def _has_legal_move(self, color:COLOR):
         for y in range(8):
             for x in range(8):
-                if self.board_state[x][y] == SQUARE.EMPTY and len(self._captures(color, x, y)) > 0:
+                if self.board_state[y][x] == COLOR.EMPTY and len(self._captures(color, x, y)) > 0:
                     return True
         return False
 
     # place a piece at coord for player
     def move(self, player_id: int, moveX: int, moveY: int):
         if not self._inbounds(moveX, moveY): raise Game.IllegalMove
-        if self.board_state[moveY][moveX] != SQUARE.EMPTY: raise Game.IllegalMove
+        if self.board_state[moveY][moveX] != COLOR.EMPTY: raise Game.IllegalMove
 
         if player_id == self.guest_id:
             if not self.turn % 2:
                 raise Game.InvalidMove
             color = COLOR.BLACK
+            opponent_color = COLOR.WHITE
         elif player_id == self.host_id:
             if self.turn % 2:
                 raise Game.InvalidMove
             color = COLOR.WHITE
+            opponent_color = COLOR.BLACK
         else:
             raise Game.Unauthorized
 
@@ -112,6 +115,10 @@ class Game:
         else:
             raise Game.IllegalMove
         self.turn += 1
+        # skip next (opponent) turn if they can't move, also gameover detection
+        if not self._has_legal_move(opponent_color):
+            if not self._has_legal_move(color): self.end()
+            else: self.turn += 1
 
     # notify the game creator of the started match
     def start(self):
@@ -128,23 +135,45 @@ class Game:
                     black_score += 1
                 elif square == COLOR.WHITE:
                     white_score += 1
+        self.game_over = [ black_score, white_score ]
         if black_score > white_score:
-            print('game', id, 'ended, winner:', self.guest_id)
+            print('game', self, 'ended, winner: (BLACK)', self.guest_id)
         elif white_score > black_score:
-            print('game', id, 'ended, winner:', self.host_id)
+            print('game', self, 'ended, winner: (WHITE)', self.host_id)
         else:
-            print('game', id, 'ended in a tie')
+            print('game', self, 'ended in a tie')
+
+    def push_gameover(self, player_id: int) -> bytes:
+        if player_id == self.guest_id: # BLACK
+            i, opp_i = 0, 1
+        else: # WHITE
+            i, opp_i = 1, 0
+        if self.game_over[i] > self.game_over[opp_i]:
+            return PushPreamble(PUSH.WIN).pack()
+        elif self.game_over[i] < self.game_over[opp_i]:
+            return PushPreamble(PUSH.LOSE).pack()
+        else:
+            return PushPreamble(PUSH.TIE).pack()
 
     def push_gamestate(self, player_id: int) -> bytes:
         message = bytearray(17)
-        if player_id == self.guest_id and self._has_legal_move(COLOR.BLACK): # BLACK
+        if self.game_over:
+            if player_id == self.guest_id: # BLACK
+                state = 0
+            else: # WHITE
+                state = 128
+            state |= self.turn # assumes turn shall never exceed 63
+            message[0] = state
+            message[1:] = self.board_state.pack() + self.push_gameover(player_id)
+            return bytes(message)
+
+        if player_id == self.guest_id: # BLACK
             state = 0
             can_move = self.turn % 2
-        elif self._has_legal_move(COLOR.WHITE): # WHITE
+        else: # WHITE
             state = 128
             can_move = (self.turn + 1) % 2
-        else: # Game has ended
-            self.end()
+
         state |= can_move << 6
         state |= self.turn # assumes turn shall never exceed 63
         message[0] = state
