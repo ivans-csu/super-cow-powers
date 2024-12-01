@@ -23,9 +23,16 @@ class GamestateEvent(Event):
 
 # called by client on join, switch to game mode UI
 class JoinEvent(GamestateEvent):
+    def __init__(self, game_id:int, gs: client.GameState, message=''):
+        self.id = game_id
+        self.gs = gs
+        self.message = message
+
     def handle(self):
         set_mode(_mode_game)
         super().handle()
+        _print_msg('@', f"Game id is '{self.id}'")
+        _prindent(' ', 'Write this number down if you wish to reconnect to this game later.')
 
 # an event which prints a string on handle
 class PrintEvent(Event):
@@ -89,7 +96,7 @@ _cmd_quit = _Command('quit',
     act = _cmd_quit_act
 )
 
-def _cmd_help_act(cl:client.Client, mode:'_MenuMode', args):
+def _cmd_help_act(cl:'client.Client', mode:'_MenuMode', args):
     if len(args) > 1 and args[1] in mode.map:
         _print_msg(f"HELP: '{args[1]}'")
         _prindent(' ', mode.map[args[1]].helptext)

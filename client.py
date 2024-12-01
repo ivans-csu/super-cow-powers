@@ -71,6 +71,7 @@ class HelloAction(Action):
             if type(status) == STATUS: raise Action.BadStatus(status.name)
             raise Action.BadStatus(status)
         self.ready = True
+        ui.push_event(ui.PrintEvent('connected to server!'))
 
     def finish(self, client):
         if not self.ready: raise Action.Unready
@@ -117,7 +118,7 @@ class JoinAction(Action):
             uimessage = 'Matchmaking in progress. Once found, your opponent will make the first move.'
         else: uimessage = ''
 
-        ui.push_event(ui.JoinEvent(self.game_state, uimessage))
+        ui.push_event(ui.JoinEvent(self.game_id, self.game_state, uimessage))
 
 class MoveAction(Action):
     type = ACTION.MOVE
@@ -204,7 +205,7 @@ class Client:
 
         self.send_action(HelloAction(self.max_protocol, self.sock.getsockname()[1]))
         ui.push_event(ui.PrintEvent('welcome!'))
-        if not NOUI: ui.prompt()
+        ui.push_event(ui.PrintEvent('connecting to server...'))
 
         while True:
             if not NOUI: ui.handle_events()
