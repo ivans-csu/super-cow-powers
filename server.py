@@ -95,15 +95,15 @@ class Game:
         if self.board_state[moveY][moveX] != COLOR.EMPTY: raise Game.IllegalMove
 
         if player_id == self.guest_id:
-            opponent_color = COLOR.WHITE
             if not self.turn % 2:
                 raise Game.InvalidMove
             color = COLOR.BLACK
+            opponent_color = COLOR.WHITE
         elif player_id == self.host_id:
-            opponent_color = COLOR.BLACK
             if self.turn % 2:
                 raise Game.InvalidMove
             color = COLOR.WHITE
+            opponent_color = COLOR.BLACK
         else:
             raise Game.Unauthorized
 
@@ -115,8 +115,10 @@ class Game:
         else:
             raise Game.IllegalMove
         self.turn += 1
+        # skip next (opponent) turn if they can't move, also gameover detection
         if not self._has_legal_move(opponent_color):
-            self.turn += 1
+            if not self._has_legal_move(color): self.end()
+            else: self.turn += 1
 
     # notify the game creator of the started match
     def start(self):
@@ -137,11 +139,11 @@ class Game:
         self.game_over[0] = black_score
         self.game_over[1] = white_score
         if black_score > white_score:
-            print('game', id, 'ended, winner:', self.guest_id)
+            print('game', self, 'ended, winner:', self.guest_id)
         elif white_score > black_score:
-            print('game', id, 'ended, winner:', self.host_id)
+            print('game', self, 'ended, winner:', self.host_id)
         else:
-            print('game', id, 'ended in a tie')
+            print('game', self, 'ended in a tie')
 
     def push_gamestate(self, player_id: int) -> bytes:
         message = bytearray(17)
@@ -158,18 +160,10 @@ class Game:
 
         if player_id == self.guest_id: # BLACK
             state = 0
-            if self._has_legal_move(COLOR.BLACK):
-                can_move = self.turn % 2
-            else:
-                can_move = 0
-                if not self._has_legal_move(COLOR.WHITE): self.end() # Game has ended
+            can_move = self.turn % 2
         else: # WHITE
             state = 128
-            if self._has_legal_move(COLOR.WHITE):
-                can_move = (self.turn + 1) % 2
-            else:
-                can_move = 0
-                if not self._has_legal_move(COLOR.BLACK): self.end() # Game has ended
+            can_move = (self.turn + 1) % 2
 
         state |= can_move << 6
         state |= self.turn # assumes turn shall never exceed 63
