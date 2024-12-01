@@ -274,6 +274,12 @@ class Client:
                     ui.push_event(ui.GamestateEvent(self.game_state))
                 elif push_type == PUSH.DCONNECT:
                     ui.push_event(ui.PrintEvent('opponent is now away', '@'))
+                elif push_type == PUSH.WIN:
+                    ui.push_event(ui.GameOverEvent('Congratulations, you WON the match!'))
+                elif push_type == PUSH.LOSE:
+                    ui.push_event(ui.GameOverEvent('Shucks, you LOST the match.'))
+                elif push_type == PUSH.TIE:
+                    ui.push_event(ui.GameOverEvent('This match ended in a tie!'))
                 else:
                     if DEBUG: print(f'client: got unhandled PUSH type "{push_type}"', file=sys.stderr)
 
