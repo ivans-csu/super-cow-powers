@@ -135,9 +135,7 @@ class Game:
                     black_score += 1
                 elif square == COLOR.WHITE:
                     white_score += 1
-        self.game_over = [0,0]
-        self.game_over[0] = black_score
-        self.game_over[1] = white_score
+        self.game_over = [ black_score, white_score ]
         if black_score > white_score:
             print('game', self, 'ended, winner: (BLACK)', self.guest_id)
         elif white_score > black_score:
@@ -147,11 +145,9 @@ class Game:
 
     def push_gameover(self, player_id: int) -> bytes:
         if player_id == self.guest_id: # BLACK
-            i = 0
-            opp_i = 1
+            i, opp_i = 0, 1
         else: # WHITE
-            i = 1
-            opp_i = 0
+            i, opp_i = 1, 0
         if self.game_over[i] > self.game_over[opp_i]:
             return PushPreamble(PUSH.WIN).pack()
         elif self.game_over[i] < self.game_over[opp_i]:

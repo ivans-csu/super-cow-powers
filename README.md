@@ -232,7 +232,7 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
   - indicate if the game is complete
     - if the turn number is odd, the player is black, but they cannot move, the match must be complete
     - if the turn number is even, the player is white, but they cannot move, the match must be complete
-  - additionally pushes WIN or LOSE message on an ended game
+  - additionally pushes WIN, LOSE or TIE message on an ended game
 
 ### 3 - WIN
   - push indicates the game is over and the receiving user has won
