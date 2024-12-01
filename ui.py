@@ -96,7 +96,7 @@ _cmd_quit = _Command('quit',
     act = _cmd_quit_act
 )
 
-def _cmd_help_act(cl:client.Client, mode:'_MenuMode', args):
+def _cmd_help_act(cl:'client.Client', mode:'_MenuMode', args):
     if len(args) > 1 and args[1] in mode.map:
         _print_msg(f"HELP: '{args[1]}'")
         _prindent(' ', mode.map[args[1]].helptext)
