@@ -82,7 +82,7 @@ class Game:
                 captured_squares.extend(direction_captures)
         return captured_squares
 
-    def _has_legal_move(self, color):
+    def _has_legal_move(self, color:COLOR):
         for y in range(8):
             for x in range(8):
                 if self.board_state[x][y] == SQUARE.EMPTY and len(self._captures(color, x, y)) > 0:
@@ -95,12 +95,12 @@ class Game:
         if self.board_state[moveY][moveX] != SQUARE.EMPTY: raise Game.IllegalMove
 
         if player_id == self.guest_id:
-            opponent_id = self.host_id
+            opponent_color = COLOR.WHITE
             if not self.turn % 2:
                 raise Game.InvalidMove
             color = COLOR.BLACK
         elif player_id == self.host_id:
-            opponent_id = self.guest_id
+            opponent_color = COLOR.BLACK
             if self.turn % 2:
                 raise Game.InvalidMove
             color = COLOR.WHITE
@@ -115,7 +115,7 @@ class Game:
         else:
             raise Game.IllegalMove
         self.turn += 1
-        if not self._has_legal_move(opponent_id):
+        if not self._has_legal_move(opponent_color):
             self.turn += 1
 
     # notify the game creator of the started match
