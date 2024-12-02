@@ -195,12 +195,6 @@ class Client:
                 sys.stderr.write(f'CONNECTION ERROR: {e}\n')
                 self.disconnect()
                 exit(1)
-        if mask & selectors.EVENT_WRITE:
-            try: self.flush()
-            except ConnectionError as e:
-                sys.stderr.write(f'CONNECTION ERROR: {e}\n')
-                self.disconnect()
-                exit(1)
 
     def config_write(self):
         with open(self.conf_path, 'w') as file:
@@ -223,7 +217,7 @@ class Client:
         self.sock.connect((address, port))
         if DEBUG: sys.stderr.write(f'client: connected to {self.sock.getpeername()}\n')
         self.sock.setblocking(False)
-        self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=self.cb_handle)
+        self.sel.register(self.sock, selectors.EVENT_READ, data=self.cb_handle)
         if not NOUI: self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
 
         # use saved user state only if we aren't debugging
@@ -253,7 +247,15 @@ class Client:
         while True:
             if not NOUI: ui.handle_events()
 
-            events = self.sel.select()
+            if self.writebuffer:
+                try: self.flush()
+                except BlockingIOError: pass
+                except ConnectionError as e:
+                    sys.stderr.write(f'CONNECTION ERROR: {e}\n')
+                    self.disconnect()
+                    exit(1)
+
+            events = self.sel.select(None)
             for key, mask in events:
                 key.data(mask)
 

@@ -8,6 +8,8 @@ from collections import deque
 
 from shared import *
 
+g_add_dirty = lambda _: None
+
 class Game:
     class IllegalMove(Exception): pass
     class InvalidMove(Exception): pass
@@ -182,6 +184,7 @@ class Session:
         self.protocol = 0 # init protocol always 0 for HELLO
         self.sock = sock
         self.write_buf = bytes()
+        self.n_clogs: int = 0
 
     def __repr__(self):
         addr = 'DEAD'
@@ -193,13 +196,16 @@ class Session:
 
     def send(self, message: bytes):
         self.write_buf += message
+        g_add_dirty(self) # this sucks, but it'll have to do
 
     def flush(self):
         try:
             sent = self.sock.send(self.write_buf)
             self.write_buf = self.write_buf[sent:]
+            if not self.write_buf: self.n_clogs = 0 # clear on success
+            else: self.n_clogs += 1
         except BlockingIOError:
-            return
+            self.n_clogs += 1
 
 # HANDLERS =============================================================================================================
 
@@ -339,12 +345,17 @@ class Server:
         self.main_sock: socket.socket
         self.matchmaking_queue: deque[Game] = deque()
         self.sel = selectors.DefaultSelector()
-        self.sessions = dict() # map player socket fds to user_ids and games
+        self.sessions: dict[int,Session] = dict() # map player socket fds to user_ids and games
+        self.dirty_sessions: deque[Session] = deque() # sessions whose sockets have data waiting to be sent
+        self.clogged_sessions: deque[Session] = deque() # sessions which failed to flush completely, or without blocking
 
     def new_session(self, conn) -> Session:
         session = Session(conn)
         self.sessions[conn.fileno()] = session
         return session
+
+    def _add_dirty(self, session:Session):
+        self.dirty_sessions.append(session)
 
     # main loop for listening as a TCP server.  blocks.
     def start(self, port = 9999):
@@ -359,26 +370,39 @@ class Server:
         print(f'listening on {self.main_sock.getsockname()}', file=sys.stderr)
 
         while True:
-            events = self.sel.select()
-            for key, mask in events:
+            events = self.sel.select(None)
+            for key, _ in events:
                 callback = key.data
                 if key.fd in self.sessions:
                     session = self.sessions[key.fd]
                 else:
                     session = self.new_session(key.fileobj)
 
-                if mask & selectors.EVENT_READ:
-                    try: callback(session)
-                    except ConnectionError as e:
-                        sys.stderr.write(f'CONNECTION ERROR: {session} -> {e}\n')
-                        self.disconnect(session)
-                        continue
-                if mask & selectors.EVENT_WRITE:
-                    if session.write_buf:
-                        try: session.flush()
-                        except ConnectionError as e:
-                            sys.stderr.write(f'CONNECTION ERROR: {session} -> {e}\n')
-                            self.disconnect(session)
+                try: callback(session)
+                except ConnectionError as e:
+                    sys.stderr.write(f'CONNECTION ERROR: {session} -> {e}\n')
+                    self.disconnect(session)
+                    continue
+
+            while self.dirty_sessions:
+                session = self.dirty_sessions[0]
+                try: session.flush()
+                except ConnectionError as e:
+                    sys.stderr.write(f'CONNECTION ERROR: {session} -> {e}\n')
+                    self.disconnect(session)
+                    self.dirty_sessions.popleft()
+                    continue
+                # DoS protection; sockets which clog too many times in a row get killed
+                # not sure if this is the correct approach
+                if session.n_clogs > 100:
+                    self.disconnect(session)
+                elif session.n_clogs > 0:
+                    self.clogged_sessions.append(session)
+                self.dirty_sessions.popleft()
+            # swap the (empty) dirty_sessions with clogged_sessions, so we retry the clogged ones after the next event loop
+            if self.clogged_sessions:
+                sys.stderr.write('CLOGGED')
+                self.dirty_sessions, self.clogged_sessions = self.clogged_sessions, self.dirty_sessions
 
     def stop(self):
         sys.stderr.write(f'released {self.main_sock.getsockname()}\n')
@@ -393,7 +417,7 @@ class Server:
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 60)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 5)
         print('new connection from:', addr, file=sys.stderr)
-        self.sel.register(sock, selectors.EVENT_WRITE | selectors.EVENT_READ, self.cb_handle)
+        self.sel.register(sock, selectors.EVENT_READ, self.cb_handle)
 
     # handle an action message from a session
     def cb_handle(self, session: Session) :
@@ -456,6 +480,7 @@ class Server:
 
 if __name__ == '__main__':
     server = Server()
+    g_add_dirty = server._add_dirty
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
