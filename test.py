@@ -900,4 +900,64 @@ class TestServerWinLose(unittest.TestCase):
 
         self.assertEqual(g.game_over, [32, 32])
 
+
+class TestCaptures(unittest.TestCase):
+    def test_invalid_inbounds_move(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        game = s.new_game(sessW)
+        game.guest_id = sessB.user_id
+        sessB.game = sessW.game = game
+
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x00' # A1
+        s.cb_handle(sessB)
+        sessB.flush()
+
+        bs = BoardState()
+        iswhite = 0 << 7
+        canmove = 1 << 6
+        turn = 1
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedB = ResponsePreamble(ACTION.MOVE, STATUS.ILLEGAL).pack() + state + bs.pack()
+
+        self.assertEqual(mcB.o, expectedB)
+
+    def test_simple_capture(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        game = s.new_game(sessW)
+        game.guest_id = sessB.user_id
+        sessB.game = sessW.game = game
+
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x32' # D3
+        s.cb_handle(sessB)
+        sessB.flush()
+
+        bs = BoardState()
+        iswhite = 0 << 7
+        canmove = 1 << 6
+        turn = 1
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedB = ResponsePreamble(ACTION.MOVE).pack() + state + bs.pack()
+        self.assertEqual(mcB.o, expectedB)
+
+    # def test_unable_to_move(self):
+    #     return
+
 unittest.main()
