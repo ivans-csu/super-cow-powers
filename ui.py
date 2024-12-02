@@ -239,12 +239,12 @@ _mode_normal = _MenuMode('normal',
     commands=[
         _Command('join',
             desc='connect to a game',
+            args = '[option]',
             helptext=['Connect to a game.',
                 'If no arguments are provided, a list of options are provided and an interactive prompt allows you to choose one.',
                 'If an argument is provided, join treats it as though you had interactively selected that option'
             ],
-            act = _cmd_join_act,
-            args = '[option]'
+            act = _cmd_join_act
         ),
     ]
 )
