@@ -1,6 +1,8 @@
 import argparse
 import atexit
+import configparser
 import os
+import pathlib
 import selectors
 import socket
 import struct
@@ -191,6 +193,9 @@ class Client:
                 self.disconnect()
                 exit(1)
 
+    def config_write(self):
+        with open(self.conf_path, 'w') as file: self.config.write(file)
+
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
         atexit.register(self.stop)
@@ -203,7 +208,27 @@ class Client:
         self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=self.cb_handle)
         if not NOUI: self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
 
-        self.send_action(HelloAction(self.max_protocol, self.sock.getsockname()[1]))
+        # use saved user state only if we aren't debugging
+        if not DEBUG and not NOUI:
+            self.config = configparser.ConfigParser()
+            conf_dir = os.environ.get('XDG_CONFIG_HOME', None)
+            if not conf_dir:
+                conf_dir = pathlib.Path(os.environ.get('HOME')) / '.config'
+            else:
+                conf_dir = pathlib.Path(conf_dir)
+            assert(conf_dir.exists())
+            self.conf_path = conf_dir / 'supercowpowers.conf'
+            if self.conf_path.exists():
+                self.config.read(self.conf_path)
+            else:
+                self.config['user'] = {'id': self.sock.getsockname()[1]} # UID = port no.
+                self.config_write()
+
+            self.user_id = int(self.config['user']['id'])
+        else:
+            self.user_id = self.sock.getsockname()[1] # UID = port no.
+
+        self.send_action(HelloAction(self.max_protocol, self.user_id))
         ui.push_event(ui.PrintEvent('welcome!'))
         ui.push_event(ui.PrintEvent('connecting to server...'))
 
