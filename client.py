@@ -272,6 +272,8 @@ class Client:
 
                     self.game_state = GameState.unpack(message)
                     ui.push_event(ui.GamestateEvent(self.game_state))
+                elif push_type == PUSH.CONNECT:
+                    ui.push_event(ui.PrintEvent('opponent has joined the match', '@'))
                 elif push_type == PUSH.DCONNECT:
                     ui.push_event(ui.PrintEvent('opponent is now away', '@'))
                 elif push_type == PUSH.WIN:
