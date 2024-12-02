@@ -35,6 +35,15 @@ class JoinEvent(GamestateEvent):
         _prindent(' ', 'Write this number down if you wish to reconnect to this game later.')
 
 # an event which prints a string on handle
+class GameOverEvent(Event):
+    def __init__(self, message: str):
+        self.message = _msg('@', message)
+
+    def handle(self):
+        print(' MATCH OVER '.center(80, '#'), self.message, '', sep='\n\n')
+        _prev_mode()
+
+# an event which prints a string on handle
 class PrintEvent(Event):
     def __init__(self, message: str, lead:str = '*'):
         self.message = _msg(lead, message)
