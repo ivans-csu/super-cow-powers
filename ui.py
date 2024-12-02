@@ -1,4 +1,5 @@
 import sys
+from textwrap import wrap
 import client
 from collections import deque
 
@@ -31,8 +32,15 @@ class JoinEvent(GamestateEvent):
     def handle(self):
         set_mode(_mode_game)
         super().handle()
-        _print_msg('@', f"Game id is '{self.id}'")
-        _prindent(' ', 'Write this number down if you wish to reconnect to this game later.')
+        _print_msg('@', f"Game id is '{self.id}'", 'Write this number down if you wish to reconnect to this game later.')
+
+class GameOverEvent(Event):
+    def __init__(self, message: str):
+        self.message = _msg('@', message)
+
+    def handle(self):
+        print(' MATCH OVER '.center(80, '#'), self.message, sep='\n\n')
+        _prev_mode()
 
 # an event which prints a string on handle
 class GameOverEvent(Event):
@@ -45,8 +53,18 @@ class GameOverEvent(Event):
 
 # an event which prints a string on handle
 class PrintEvent(Event):
-    def __init__(self, message: str, lead:str = '*'):
-        self.message = _msg(lead, message)
+    def __init__(self, message: str, lead:str = ''):
+        if lead:
+            self.message = _msg(lead, message)
+        else:
+            self.message = _msg(message)
+
+    def handle(self): print(self.message)
+
+# an event which prints a string on handle
+class ErrorEvent(Event):
+    def __init__(self, message: str, lead:str = '@'):
+        self.message = _msg(lead, 'ERROR: ' + message + '!')
 
     def handle(self): print(self.message)
 
@@ -98,22 +116,20 @@ class _Command():
         pass
 
 # universal commands ---------------------------------------------------------------------------------------------------
-def _cmd_quit_act(*_):
-    _mode.append(_mode_quit)
 _cmd_quit = _Command('quit',
     desc='exit the program',
-    act = _cmd_quit_act
+    act = lambda *_: _mode.append(_mode_quit)
 )
 
 def _cmd_help_act(cl:'client.Client', mode:'_MenuMode', args):
     if len(args) > 1 and args[1] in mode.map:
         _print_msg(f"HELP: '{args[1]}'")
-        _prindent(' ', mode.map[args[1]].helptext)
+        _prindent(1, mode.map[args[1]].helptext)
     else:
         _print_msg('HELP:')
-        _prindent('>', *(cmd.short_help() for cmd in mode.cmds))
+        _prindent(1, *(cmd.short_help() for cmd in mode.cmds))
 _cmd_help = _Command('help',
-    desc='print this list, or get extended help for a specific command',
+    desc='print this list, or get more help for a specific command',
     act = _cmd_help_act,
     args = '[command]'
 )
@@ -238,9 +254,13 @@ def parse(cl:'client.Client', input:str):
 
 def push_event(event): events.append(event)
 
+# clear the current line from the terminal
+def clear_line():
+    sys.stdout.write('\r\033[J')
+
 def handle_events():
     if events:
-        sys.stdout.write('\r\033[J') # clear the current line from the terminal
+        clear_line()
         while events:
             events.popleft().handle()
         prompt()
@@ -248,27 +268,49 @@ def handle_events():
 # helper functions -----------------------------------------------------------------------------------------------------
 
 def _msg(*args) -> str:
-    if len(args) > 1:
+    if len(args) > 1 and type(args[0]) is str and len(args[0]) == 1:
         lead = args[0]
         args = args[1:]
-    else: lead = '*'
-    return f' {lead} {args[0]}'
+    else:
+        lead = '~'
 
-def _indent(lead:str, *args) -> str:
-    if type(args[0]) is int:
+    if len(args) > 1 and type(args[0]) is int:
         nspace = args[0]
         args = args[1:]
     else:
-        nspace = 3
+        nspace = 0
 
-    lead = f"{' '*nspace}{lead} "
-    return ''.join(f'{lead}{arg}\n' for arg in args)
+    lead = f'{" "*nspace} {lead} '
+    cont = " " * (nspace + 3)
+
+    subargs = []
+    for arg in args:
+        for a in arg.split('\n'):
+            subargs.extend(wrap(a.strip(), 80 - len(lead)))
+
+    line_one = lead + subargs[0]
+    return '\n'.join((line_one, *(cont + arg for arg in subargs[1:])))
+
+def _indent(*args) -> str:
+    if len(args) > 1 and type(args[0]) == str and len(args[0]) == 1:
+        lead = args[0]
+        args = args[1:]
+    else:
+        lead = '*'
+
+    if len(args) > 1 and type(args[0]) is int:
+        nspace = 2 * args[0]
+        args = args[1:]
+    else:
+        nspace = 0
+
+    return '\n'.join(_msg(lead, nspace, arg) for arg in args) + '\n'
 
 def _print_msg(*args):
     print(_msg(*args))
 
-def _prindent(lead:str, *args):
-    print(_indent(lead, *args))
+def _prindent(*args):
+    print(_indent(*args))
 
 # INIT =================================================================================================================
 _mode.append(_mode_normal)

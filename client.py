@@ -71,7 +71,7 @@ class HelloAction(Action):
             if type(status) == STATUS: raise Action.BadStatus(status.name)
             raise Action.BadStatus(status)
         self.ready = True
-        ui.push_event(ui.PrintEvent('connected to server!'))
+        ui.push_event(ui.PrintEvent('connected to server!', '@'))
 
     def finish(self, client):
         if not self.ready: raise Action.Unready
@@ -97,9 +97,13 @@ class JoinAction(Action):
     def parse_response(self, status: STATUS|int, message: bytes):
         if status != STATUS.OK:
             if status == STATUS.UNAUTHORIZED:
-                raise Action.Unauthorized('Server reports user is not permitted to join this game.')
-            if status == STATUS.INVALID:
-                raise Action.Invalid('Server reports game does not exist.')
+                if DEBUG: raise Action.Unauthorized('Server reports user is not permitted to join this game.')
+                ui.push_event(ui.ErrorEvent('Unauthorized; You are not a participant in this game'))
+                return
+            elif status == STATUS.INVALID:
+                if DEBUG: raise Action.Invalid('Server reports game does not exist.')
+                ui.push_event(ui.ErrorEvent('No such game exists'))
+                return
             else:
                 if type(status) == STATUS: raise Action.BadStatus(status.name)
                 else: raise Action.BadStatus(status)
@@ -109,7 +113,9 @@ class JoinAction(Action):
         self.ready = True
 
     def finish(self, client: 'Client'):
-        if not self.ready: raise Action.Unready
+        if not self.ready:
+            if DEBUG: raise Action.Unready
+            else: return # silently remove unfinished actions when not debugging
         client.game_id = self.game_id
         client.game_state = self.game_state
 
@@ -220,8 +226,11 @@ class Client:
         except BlockingIOError:
             return
         if not preamble:
-            sys.stderr.write('server disconnected\n')
-            exit(0)
+            if DEBUG: sys.stderr.write('server disconnected\n')
+            if not NOUI:
+                ui.clear_line()
+                ui.ErrorEvent('Lost connection to server').handle()
+            exit(1)
 
         # process entire input buffer
         while preamble:
