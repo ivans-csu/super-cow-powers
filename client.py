@@ -1,6 +1,8 @@
 import argparse
 import atexit
+import configparser
 import os
+import pathlib
 import selectors
 import socket
 import struct
@@ -114,11 +116,14 @@ class JoinAction(Action):
         client.game_state = self.game_state
 
         if DEBUG: sys.stderr.write(f'client: user {client.user_id} joined game {self.game_id}\n')
-        if self.game_state.color == COLOR.WHITE:
-            uimessage = 'Matchmaking in progress. Once found, your opponent will make the first move.'
-        else: uimessage = ''
+        if not NOUI:
+            client.save_state({'last_played': self.game_id})
 
-        ui.push_event(ui.JoinEvent(self.game_id, self.game_state, uimessage))
+            if self.game_state.color == COLOR.WHITE:
+                uimessage = 'Matchmaking in progress. Once found, your opponent will make the first move.'
+            else: uimessage = ''
+
+            ui.push_event(ui.JoinEvent(self.game_id, self.game_state, uimessage))
 
 class MoveAction(Action):
     type = ACTION.MOVE
@@ -191,6 +196,18 @@ class Client:
                 self.disconnect()
                 exit(1)
 
+    def config_write(self):
+        with open(self.conf_path, 'w') as file:
+            self.config.write(file)
+
+    def save_state(self, state:dict):
+        if not self.config.has_section('state'):
+            self.config['state'] = state
+        else:
+            for k,v in state.items():
+                self.config['state'][k] = str(v)
+        self.config_write()
+
     # MAIN LOOP
     def start(self, address: str = '', port: int = 9999):
         atexit.register(self.stop)
@@ -203,7 +220,27 @@ class Client:
         self.sel.register(self.sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=self.cb_handle)
         if not NOUI: self.sel.register(sys.stdin, selectors.EVENT_READ, data=self.cb_stdin)
 
-        self.send_action(HelloAction(self.max_protocol, self.sock.getsockname()[1]))
+        # use saved user state only if we aren't debugging
+        if not DEBUG and not NOUI:
+            self.config = configparser.ConfigParser()
+            conf_dir = os.environ.get('XDG_CONFIG_HOME', None)
+            if not conf_dir:
+                conf_dir = pathlib.Path(os.environ.get('HOME')) / '.config'
+            else:
+                conf_dir = pathlib.Path(conf_dir)
+            assert(conf_dir.exists())
+            self.conf_path = conf_dir / 'supercowpowers.conf'
+            if self.conf_path.exists():
+                self.config.read(self.conf_path)
+            else:
+                self.config['user'] = {'id': self.sock.getsockname()[1]} # UID = port no.
+                self.config_write()
+
+            self.user_id = int(self.config['user']['id'])
+        else:
+            self.user_id = self.sock.getsockname()[1] # UID = port no.
+
+        self.send_action(HelloAction(self.max_protocol, self.user_id))
         ui.push_event(ui.PrintEvent('welcome!'))
         ui.push_event(ui.PrintEvent('connecting to server...'))
 
@@ -291,6 +328,11 @@ class Client:
 
     def join(self, game_id: int):
         self.send_action(JoinAction(self.max_protocol, game_id))
+
+    def rejoin(self):
+        try: game_id = int(self.config['state']['last_played'])
+        except: ui.push_event(ui.PrintEvent("You haven't played a game yet!"))
+        else: self.join(game_id)
 
     def move(self, x:int, y:int):
         self.send_action(MoveAction(self.protocol_version, x, y))
