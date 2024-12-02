@@ -682,6 +682,9 @@ class TestServerDConnPush(unittest.TestCase):
         g.join(sessB)
         self.assertEqual(g.host_session, sessW)
         self.assertEqual(g.guest_session, sessB)
+        # discard CONNECT
+        sessW.flush()
+        mcW.o = b''
 
         g.disconnect(sessB)
         self.assertEqual(g.host_session, sessW)
@@ -711,6 +714,9 @@ class TestServerDConnPush(unittest.TestCase):
         g.join(sessB)
         self.assertEqual(g.host_session, sessW)
         self.assertEqual(g.guest_session, sessB)
+        # discard CONNECT
+        sessW.flush()
+        mcW.o = b''
 
         g.disconnect(sessB)
         self.assertEqual(g.host_session, sessW)
