@@ -231,8 +231,10 @@ _mode_join = _Mode_Join()
 
 # normal mode ----------------------------------------------------------------------------------------------------------
 
-def _cmd_join_act(*_):
+def _cmd_join_act(cl, _, args):
     _mode.append(_mode_join)
+    args = args[1:]
+    if args: _mode[-1].parse(cl, args)
 _mode_normal = _MenuMode('normal',
     commands=[
         _Command('join',
