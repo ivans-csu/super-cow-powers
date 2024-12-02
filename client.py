@@ -121,8 +121,9 @@ class JoinAction(Action):
         client.game_id = self.game_id
         client.game_state = self.game_state
 
-        if DEBUG: sys.stderr.write(f'client: user {client.user_id} joined game {self.game_id}\n')
-        if not NOUI:
+        if DEBUG:
+            sys.stderr.write(f'client: user {client.user_id} joined game {self.game_id}\n')
+        elif not NOUI:
             client.save_state({'last_played': self.game_id})
 
             if self.game_state.color == COLOR.WHITE:
