@@ -88,10 +88,10 @@ _mode_quit = _QuitMode()
 
 # commands are used by MenuModes; they represent a command that the user can select from the menu
 class _Command():
-    def __init__(self, name:str, desc:str, helptext:str = '', args:str = '', act = None):
+    def __init__(self, name:str, desc:str, helptext:list[str] = [], args:str = '', act = None):
         self.name = name.lower()
         self.desc = desc
-        if not helptext: helptext = desc
+        if not helptext: helptext = [desc]
         self.helptext = helptext
         self.args = args
         if act: self.act = act
@@ -123,13 +123,19 @@ _cmd_quit = _Command('quit',
 
 def _cmd_help_act(cl:'client.Client', mode:'_MenuMode', args):
     if len(args) > 1 and args[1] in mode.map:
+        cmd = mode.map[args[1]]
         _print_msg(f"HELP: '{args[1]}'")
-        _prindent(1, mode.map[args[1]].helptext)
+        _prindent(1, 'USAGE:')
+        _prindent(2, *[f'{key} {cmd.args}' for key in (cmd.abbrev, cmd.name)])
+        _prindent(1, 'DESCRIPTION:')
+        _prindent(2, *mode.map[args[1]].helptext)
     else:
         _print_msg('HELP:')
         _prindent(1, *(cmd.short_help() for cmd in mode.cmds))
+    sys.stdout.write('\n')
 _cmd_help = _Command('help',
     desc='print this list, or get more help for a specific command',
+    helptext=['Prints a list of commands and their usage, or provides specific help for a command if one is specified.'],
     act = _cmd_help_act,
     args = '[command]'
 )
@@ -201,7 +207,11 @@ _mode_game = _GameMenuMode()
 
 class _Mode_Join(_Mode):
     def prompt(self) -> str:
-        return _indent('>', "'m' to queue for matchmaking,", "'p' to create a private match", "a game number to (re)join a specific match")
+        return 'JOIN:\n' + _indent('>', "'m' to queue for matchmaking,",
+           "'p' to create a private match",
+           "a game number to (re)join a specific match",
+           'any other text to abort'
+        ) + '\n'
 
     def parse(self, cl, args):
         cmd = args[0].lower()
@@ -227,7 +237,12 @@ _mode_normal = _MenuMode('normal',
     commands=[
         _Command('join',
             desc='connect to a game',
-            act = _cmd_join_act
+            helptext=['Connect to a game.',
+                'If no arguments are provided, a list of options are provided and an interactive prompt allows you to choose one.',
+                'If an argument is provided, join treats it as though you had interactively selected that option'
+            ],
+            act = _cmd_join_act,
+            args = '[option]'
         ),
     ]
 )
@@ -304,7 +319,7 @@ def _indent(*args) -> str:
     else:
         nspace = 0
 
-    return '\n'.join(_msg(lead, nspace, arg) for arg in args) + '\n'
+    return '\n'.join(_msg(lead, nspace, arg) for arg in args)
 
 def _print_msg(*args):
     print(_msg(*args))
