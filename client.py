@@ -13,6 +13,7 @@ import ui
 
 DEBUG = os.environ.get('DEBUG', None)
 NOUI = os.environ.get('NOUI', None)
+USER = os.environ.get('USER', None)
 
 class Action:
     class Unready(Exception): pass
@@ -198,10 +199,12 @@ class Client:
                 exit(1)
 
     def config_write(self):
+        if USER: return
         with open(self.conf_path, 'w') as file:
             self.config.write(file)
 
     def save_state(self, state:dict):
+        if USER: return
         if not self.config.has_section('state'):
             self.config['state'] = state
         else:
@@ -224,18 +227,21 @@ class Client:
         # use saved user state only if we aren't debugging
         if not DEBUG and not NOUI:
             self.config = configparser.ConfigParser()
-            conf_dir = os.environ.get('XDG_CONFIG_HOME', None)
-            if not conf_dir:
-                conf_dir = pathlib.Path(os.environ.get('HOME')) / '.config'
-            else:
-                conf_dir = pathlib.Path(conf_dir)
-            assert(conf_dir.exists())
-            self.conf_path = conf_dir / 'supercowpowers.conf'
-            if self.conf_path.exists():
-                self.config.read(self.conf_path)
-            else:
-                self.config['user'] = {'id': self.sock.getsockname()[1]} # UID = port no.
-                self.config_write()
+            try:
+                self.config['user'] = {'id': int(USER)} # UID = port no.
+            except:
+                conf_dir = os.environ.get('XDG_CONFIG_HOME', None)
+                if not conf_dir:
+                    conf_dir = pathlib.Path(os.environ.get('HOME')) / '.config'
+                else:
+                    conf_dir = pathlib.Path(conf_dir)
+                assert(conf_dir.exists())
+                self.conf_path = conf_dir / 'supercowpowers.conf'
+                if self.conf_path.exists():
+                    self.config.read(self.conf_path)
+                else:
+                    self.config['user'] = {'id': self.sock.getsockname()[1]} # UID = port no.
+                    self.config_write()
 
             self.user_id = int(self.config['user']['id'])
         else:
