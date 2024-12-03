@@ -900,4 +900,66 @@ class TestServerWinLose(unittest.TestCase):
 
         self.assertEqual(g.game_over, [32, 32])
 
+
+class TestMoveValidation(unittest.TestCase):
+    def test_invalid_inbounds_move(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = s.new_session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = s.new_session(mcB)
+        sessB.user_id = 0x1134
+
+        game = s.new_game(sessW)
+        game.guest_id = sessB.user_id
+        sessB.game = sessW.game = game
+
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x00' # A1
+        s.cb_handle(sessB)
+        sessB.flush()
+
+        bs = BoardState()
+        iswhite = 0 << 7
+        canmove = 1 << 6
+        turn = 1
+        state = (iswhite | canmove | turn).to_bytes()
+        expectedB = ResponsePreamble(ACTION.MOVE, STATUS.ILLEGAL).pack() + state + bs.pack()
+
+        self.assertEqual(mcB.o, expectedB)
+
+    def test_has_legal_move(self):
+        s = server.Server()
+
+        mcW = MockConn(fd = 1)
+        sessW = server.Session(mcW)
+        sessW.user_id = 0x486
+
+        mcB = MockConn(fd = 1)
+        sessB = server.Session(mcB)
+        sessB.user_id = 0x1134
+
+        g = s.new_game(sessW)
+        g.guest_id = sessB.user_id
+        sessB.game = sessW.game = g
+        g.host_session = sessW
+        g.guest_session = sessB
+        g.turn = 1
+
+        # game in which only white has a valid move
+        bs = b'\x00\x00VUVUVUVUVUVUU\xa5'
+        g.board_state = BoardState.unpack(bs)
+
+        self.assertTrue(g._has_legal_move(COLOR.BLACK))
+        mcB.i = ACTION.MOVE.to_bytes() + b'\x30' # D1
+        s.cb_handle(sessB)
+        sessB.flush()
+        sessW.flush()
+
+        self.assertFalse(g._has_legal_move(COLOR.BLACK))
+        self.assertEqual(g.turn, 2)
+
+
 unittest.main()
