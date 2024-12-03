@@ -40,7 +40,6 @@ class Game:
             sys.stderr.write(f'guest {session} joined, readied unready game {self}\n')
             self.guest_id = id
             self.guest_session = session
-            self.start()
         elif id == self.guest_id:
             sys.stderr.write(f'guest session {session} rejoined game {self}\n')
             self.guest_session = session
@@ -121,11 +120,6 @@ class Game:
         if not self._has_legal_move(opponent_color):
             if not self._has_legal_move(color): self.end()
             else: self.turn += 1
-
-    # notify the game creator of the started match
-    def start(self):
-        print('game started', self, file=sys.stderr)
-        # TODO
 
     def end(self):
         black_score = 0
@@ -288,6 +282,10 @@ class JoinHandler(Handler):
                     return ResponsePreamble(ACTION.JOIN, STATUS.INVALID).pack()
 
         session.game = game
+
+        # send CONNECT to opponent
+        opponent = game.guest_session if game.host_session == session else game.host_session
+        if opponent: opponent.send(PushPreamble(PUSH.CONNECT).pack())
 
         preamble = ResponsePreamble(ACTION.JOIN).pack()
         body = struct.pack('!I', game.id)
