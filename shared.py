@@ -118,6 +118,22 @@ class BoardState:
                 octet += 1
         return board
 
+    @staticmethod
+    def from_ascii(state:bytes) -> 'BoardState':
+        board = BoardState(new=False)
+        bi = 0
+        B = int.from_bytes(b'@')
+        W = int.from_bytes(b'O')
+        E = int.from_bytes(b'-')
+        for c in state:
+            if   c == B: board[bi//8][bi%8] = COLOR.BLACK
+            elif c == W: board[bi//8][bi%8] = COLOR.WHITE
+            elif c == E: board[bi//8][bi%8] = COLOR.EMPTY
+            else: continue
+            bi += 1
+        return board
+
+
     def pack(self) -> bytes:
         output = bytearray(16)
         octet = 0

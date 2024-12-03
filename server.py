@@ -271,6 +271,19 @@ class JoinHandler(Handler):
                 else:
                     game = server.new_game(session)
                     server.matchmaking_queue.append(game)
+            case 486: # DEMO:winstate
+                game = server.new_game(session)
+                game.board_state = BoardState.from_ascii(
+                    '''-@@@@@-@
+                       @@@@@@@@
+                       @@O@@@@@
+                       @@@O@OO@
+                       @@@@O@@@
+                       @@O@OO@@
+                       @@@@@@@@
+                       --OOOOO-'''.encode()
+                 )
+                game.turn = 61 - 5
             case _:
                 game_id -= 2 # offset for reserved 0,1
                 if game_id < len(server.games):
