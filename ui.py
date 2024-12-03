@@ -246,6 +246,10 @@ _mode_normal = _MenuMode('normal',
             ],
             act = _cmd_join_act
         ),
+        _Command('rejoin',
+            desc='reconnect to the most recent game',
+            act = lambda cl, *_: cl.rejoin()
+        ),
     ]
 )
 
