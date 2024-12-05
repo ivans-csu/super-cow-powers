@@ -3,20 +3,54 @@
 This is a simple Othello/Reversi game implemented using Python and sockets.
 
 **State of Implementation:**
-- The entire v0 protocol as described in this document is implemented as described in the specification EXCEPT for state pushes:
-    - CONNECT
-    - DCONNECT
-- No rules enforcement other than turn order and coordinate bounds are implemented
-- Clients connect to the server at startup
-- Clients immediately join matchmaking at startup
-  - If your terminal hangs up, there is no user-facing way to reconnect to a game.  This is a UI limitation, the protocol for this is implemented
-- Player is able to enter moves, and both clients will display the game state as it changes
+- The entire v0 protocol as described in this document is implemented as described in the specification
+- Full rules enforcement for Othello is implemented as described:
+  - black moves first
+  - players can only move on their turn
+  - players can only place their pieces on empty spaces
+  - moves are not legal if they don't capture an opponent piece
+  - turns are automatically forfeit iff a legal move is impossible, players cannot choose to pass
+  - capture criteria:
+    - all runs of captured-color pieces along cardinal and diagonal directions from the placed capturing-color piece, bounded by the first piece of the capturing-color in each run
+    - captures are non-recursive; only as a direct result of the placed piece
+    - capture runs always stop at the first capturing-color; they cannot "jump over" capturing-color pieces
+- Any number of matches may be played concurrently by any number of users
+- Session management:
+  - Individual users may play any number of matches concurrently
+  - Individual sessions for a user are attached to at most one active game
+  - An individual instance of the client application may only possess one session; This is a UI limitation, not a protocol limitation.
+
+**Security Concerns:**
+- There is no encryption employed; neither authenticity nor confidentiality are provided
+  - This is trivially solved with TLS, as our protocol is built atop TCP
+- There is no user authentication; The server uncritically accepts the reported "user id"
+  - User impersonation is trivial, and therefore joining other people's games is as simple as knowing their user ids.
+  - We envisioned an account registration process in which a user would be allocated an id, and an authentication token either assigned or chosen.
+    - We might have been able to pull this off with a larger team or a smaller workload
+
+**UI Overview**
+- Clients immediately connect to the server at startup
+- Client is presented with a CLI
+  - Help is provided with the command 'h' or 'help'
+  - j/join facilitates connecting to a match:
+    - matchmaking either creates a new unready game, or joins and readies a matchmade game waiting for an opponent
+    - 'private match' creates a new unready game, but does not place it in matchmaking.  They can only be readied if an opponent joins directly by id
+    - join with an id number explicitly joins the specified game
+      - errors are displayed if no such game exists, or if that game is active with two players, neither of whose id match that of the user id for this session and client
+      - join by id can be used to rejoin a readied game if the user id of the client matches that of the game
+  - r/rejoin uses persistent state to remember and rejoin the game that was most recently joined by an instance of the client
+- Once joined to a game, player is able to enter moves, and both clients will display the game state as it changes
+- user id and last played game are persisted to a file $XDG_CONFIG_HOME/supercowpowers.conf or ~/.config/supercowpowers.conf if unset
+- user id may be overridden and persistent state disabled, by setting the COW_USER environment variable to an integer quantity
+  - this is used to test matches between two clients running within one localhost environment
 
 **How to play:**
 1. **Start the server:** Run `python server.py -p <listen port>`
 2. **Connect clients:** Run `python client.py -i <server IP address> -p <server port>` once for each client (each on their own terminal).
-3. **Play the game:** Players take turns entering their moves. When all squares contain pieces, the player with the most pieces on the board wins.
-    - Use the format 'A1' to place a piece at that game coordinate
+3. **Join a game:** type 'j' at the commandline for a descriptive list of options, or type 'j m' to immediately queue for matchmaking
+4. **Wait for another client to do the same**
+5. **Play the game:** Players take turns entering their moves. When no further moves are possible, the player with the most pieces on the board wins.
+    - Use the format 'A1' or 'a1' to place a piece at the top left game coordinate
 
 **Technologies used:**
 * Python
