@@ -13,7 +13,7 @@ import ui
 
 DEBUG = os.environ.get('DEBUG', None)
 NOUI = os.environ.get('NOUI', None)
-USER = os.environ.get('USER', None)
+USER = os.environ.get('COW_USER', None)
 
 class Action:
     class Unready(Exception): pass
