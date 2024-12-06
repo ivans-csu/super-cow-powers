@@ -275,7 +275,7 @@ class JoinHandler(Handler):
                 game_id -= 2 # offset for reserved 0,1
                 if game_id < len(server.games):
                     game = server.games[game_id]
-                    if server.matchmaking_queue[0] == game:
+                    if server.matchmaking_queue and server.matchmaking_queue[0] == game:
                         server.matchmaking_queue.popleft()
                     if not game.join(session):
                         return ResponsePreamble(ACTION.JOIN, STATUS.UNAUTHORIZED).pack()
