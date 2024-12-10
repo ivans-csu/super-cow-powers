@@ -354,3 +354,13 @@ This is a simple Othello/Reversi game implemented using Python and sockets.
 
 #### 5 - TIE
   (empty)
+
+# Retrospective
+
+## What went well
+
+We were able to design an elegant binary protocol, and our code was fairly clean and efficient. By the end of the semester we had a fully working implementation of Othello/Reversi that could be played to completion, was fun to play, had a good terminal user interface, and supported playing multiple games at once, with the games being tied to user IDs.
+
+## What could be improved upon
+
+We were limited by the size of the team, and the fact that one member (Ivan Stanton, me) had significantly less free time than the other (Ben Perry). Ben ended up doing most of the programming, with Ivan contributing only the code that validates and evaluates the effects of moves, and some tests for that same code. We also could have spent more time on designing and planning; although we had meetings early in the semester to come up with a basic design, Ben ended up fleshing out most of the details. Many oversights Ben made could have been caught with better (and more) peer review and testing. While we did develop unit tests for most of the features of the program, we never developed integration tests, set up CI, or properly assessed test coverage; all of this could be done elegantly given our code, and if we did, we may have caught more bugs earlier on. As a result of the same time limitations, we never developed any extra credit features, like authentication, encryption, or server-side persistent storage.
